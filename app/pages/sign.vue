@@ -9,18 +9,20 @@
         <NuxtImg
           src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
           alt="Kali-E Logo"
+          width="48"
+          height="48"
           class="absolute top-2 left-4 w-12 h-12 object-contain"
           loading="eager"
           decoding="async"
         />
 
-        <!-- Login Form -->
+        <!-- Sign Up Form -->
         <div class="w-full max-w-sm space-y-2">
           <h2 class="text-2xl font-bold mb-1">
-            Welcome!
+            Create account
           </h2>
           <h5 class="text-sm text-white-500 opacity-60  mb-3">
-            Login to kali-E to use your personal AI assistant.
+            Sign up to start using your personal AI assistant.
           </h5>
 
           <!-- Google button -->
@@ -30,13 +32,13 @@
               alt="Google"
               class="w-5 h-5"
             >
-            Log in with Google
+            Continue with Google
           </button>
 
-          <!-- Apple button -->
+          <!-- Github button -->
           <button class="w-full  flex items-center justify-center gap-2 bg-black-500 shadow-lg hover:bg-gray-800 py-2 rounded-lg font-medium border border-gray-700">
             <Icon name="tabler-brand-github-filled" />
-            Log in with Github
+            Continue with Github
           </button>
 
           <!-- Divider -->
@@ -46,8 +48,18 @@
             <hr class="flex-grow border-gray-700">
           </div>
 
-          <!-- Email + Password -->
+          <!-- Name + Email + Password -->
           <form class="space-y-2">
+            <div>
+              <label for="name" class="block text-left mb-1">Full name</label>
+              <input
+                id="name"
+                type="text"
+                placeholder="Your full name"
+                class="w-full  px-4 py-3 rounded-lg bg-black-500 shadow-lg border border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-900"
+              >
+            </div>
+
             <div>
               <label for="email" class="block text-left mb-1">Email</label>
               <input
@@ -61,26 +73,26 @@
             <div>
               <div class="flex justify-between items-center">
                 <label for="password" class="block mb-1">Password</label>
-                <a href="#" class="text-sm text-purple-400 hover:underline">Forgot password?</a>
+                <span class="text-sm text-gray-500">min 8 characters</span>
               </div>
               <input
                 id="password"
                 type="password"
-                placeholder="Your password"
+                placeholder="Create a password"
                 class="w-full  px-4 py-3 rounded-lg bg-black-500 shadow-lg border border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-900"
               >
             </div>
 
             <button type="submit" class="w-full bg-black-500 hover:bg-purple-900 opacity-30 py-3 mt-2.5 rounded-lg font-medium border border-gray-900">
-              Log in
+              Create account
             </button>
           </form>
 
-          <!-- Sign up link -->
+          <!-- Login link -->
           <p class="text-sm text-gray-400 text-center">
-            Don’t have an account?
-            <NuxtLink to="/sign" class="text-purple-400 hover:underline">
-              Sign up
+            Already have an account?
+            <NuxtLink to="/login" class="text-purple-400 hover:underline">
+              Log in
             </NuxtLink>
           </p>
         </div>
@@ -89,8 +101,9 @@
       <!-- Right half -->
       <div class="hidden lg:flex lg:w-1/2">
         <NuxtImg
-          src="/img/Gemini_Generated_Image_t7306vt7306vt730.jpg"
+          src="/img/Gemini_Generated_Image_sfebllsfebllsfeb.png"
           alt="Hero Image"
+          width="1280"
           class="max-w-full h-full opacity-50"
           sizes="sm:100vw md:50vw lg:50vw"
           loading="lazy"

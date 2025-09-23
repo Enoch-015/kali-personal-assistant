@@ -13,7 +13,6 @@
           loading="eager"
           decoding="async"
         />
-
         <!-- Login Form -->
         <div class="w-full max-w-sm space-y-2">
           <h2 class="text-2xl font-bold mb-1">
