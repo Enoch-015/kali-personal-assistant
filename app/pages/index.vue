@@ -9,8 +9,6 @@
         <NuxtImg
           src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
           alt="Kali-E Logo"
-          width="48"
-          height="48"
           class="absolute top-2 left-4 w-12 h-12 object-contain"
           loading="eager"
           decoding="async"
@@ -81,7 +79,9 @@
           <!-- Sign up link -->
           <p class="text-sm text-gray-400 text-center">
             Don’t have an account?
-            <a href="#" class="text-purple-400 hover:underline">Sign up</a>
+            <NuxtLink to="/sign" class="text-purple-400 hover:underline">
+              Sign up
+            </NuxtLink>
           </p>
         </div>
       </div>
