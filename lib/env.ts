@@ -9,6 +9,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   TURSO_DATABASE_URL: z.string(),
   TURSO_AUTH_TOKEN: z.string(),
+  BETTER_AUTH_SECRET: z.string(),
+  BETTER_AUTH_BASE_URL: z.string(),
   // Add more variables as needed, e.g.:
   // API_BASE_URL: z.string().url().optional(),
 });
