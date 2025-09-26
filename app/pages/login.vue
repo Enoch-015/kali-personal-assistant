@@ -1,4 +1,11 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+definePageMeta({ layout: "auth" });
+
+function onSubmit(e: Event) {
+  e.preventDefault();
+  return navigateTo("/");
+}
+</script>
 
 <template>
   <div class="flex flex-col">
@@ -9,6 +16,8 @@
         <NuxtImg
           src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
           alt="Kali-E Logo"
+          width="48"
+          height="48"
           class="absolute top-2 left-4 w-12 h-12 object-contain"
           loading="eager"
           decoding="async"
@@ -46,7 +55,7 @@
           </div>
 
           <!-- Email + Password -->
-          <form class="space-y-2">
+          <form class="space-y-2" @submit="onSubmit">
             <div>
               <label for="email" class="block text-left mb-1">Email</label>
               <input

@@ -15,9 +15,6 @@ export default defineNuxtConfig({
       },
     },
   },
-  routeRules: {
-    "/": { redirect: "/login" },
-  },
   eslint: {
     config: {
       standalone: false,
