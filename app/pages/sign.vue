@@ -3,6 +3,8 @@ import type { ComponentPublicInstance } from "vue";
 
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 
+definePageMeta({ layout: "auth" });
+
 type Step = "form" | "verify";
 
 // Step management
@@ -187,10 +189,8 @@ async function onVerifyCode(e: Event) {
   // Simulate verify call
   await new Promise(r => setTimeout(r, 700));
   isSubmitting.value = false;
-  // UI only: show a simple success indicator for now
-  // In a real app, navigate to app or finish signup
-  // eslint-disable-next-line no-alert
-  alert("Sign up complete. 2FA verified (UI only).");
+  // UI-only: redirect to home
+  return navigateTo("/");
 }
 
 onMounted(() => {
