@@ -5,7 +5,8 @@ export const user = sqliteTable("user", {
   id: int().primaryKey({ autoIncrement: true }),
   name: text().notNull(),
   email: text().notNull().unique(),
-  emailVerified: integer({ mode: "boolean" })
+  // Explicit column name to match migration (`email_verified`) so updates persist.
+  emailVerified: integer("email_verified", { mode: "boolean" })
     .default(false)
     .notNull(),
   image: text(),

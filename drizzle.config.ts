@@ -3,7 +3,6 @@ import { defineConfig } from "drizzle-kit";
 import env from "./lib/env";
 
 export default defineConfig({
-  casing: "snake_case",
   schema: "./lib/db/schema/index.ts",
   out: "./lib/db/migrations",
   dialect: "turso",

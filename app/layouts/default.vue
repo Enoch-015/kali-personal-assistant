@@ -144,6 +144,7 @@ function closeMobileNav() {
     <main class="flex-1 min-w-0">
       <slot />
     </main>
+    <ToastContainer />
   </div>
 </template>
 
