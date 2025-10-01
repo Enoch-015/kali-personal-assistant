@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "packageManager": "pnpm@10.0.0",
+
   "scripts": {
     "build": "nuxt build",
     "dev": "concurrently \"pnpm dev:db\" \"nuxt dev\"",
@@ -49,6 +50,16 @@
     "eslint-plugin-format": "^1.0.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@tailwindcss/oxide",
+      "core-js",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   },
   "lint-staged": {
     "*": "pnpm lint"
