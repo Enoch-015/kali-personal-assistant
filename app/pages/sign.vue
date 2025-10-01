@@ -6,7 +6,7 @@ definePageMeta({ layout: "auth" });
 
 type Step = "form" | "check";
 const step = ref<Step>("form");
-const form = reactive({ name: "", email: "", password: "", image: "" });
+const form = reactive({ name: "", email: "", password: "" }); // Removed image from form
 const errors = reactive<{ name?: string; email?: string; password?: string }>({});
 const loading = ref(false);
 const resendCooldown = ref(0);
@@ -46,14 +46,23 @@ async function onSubmitForm(e: Event) {
   try {
     const toast = useToast();
     const client: any = (useNuxtApp() as any).$authClient;
-    const { error } = await client.signUp.email({
+
+    // Only send fields that have values - image is optional
+    const signUpData: any = {
       name: form.name,
       email: form.email,
       password: form.password,
-      image: form.image || undefined,
-      callbackURL: "/",
-    });
+    };
+
+    const { error } = await client.signUp.email(signUpData);
+
     if (error) {
+      // Log the full error object to console
+      console.error("Full error object:", error);
+      console.error("Error status:", error?.status);
+      console.error("Error message:", error?.message);
+      console.error("Error details:", JSON.stringify(error, null, 2));
+
       const msg = error.message || "Sign up failed";
       message.value = msg;
       if (/already exists/i.test(msg)) {

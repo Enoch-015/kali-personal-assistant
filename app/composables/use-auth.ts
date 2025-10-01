@@ -4,6 +4,12 @@ type PossibleAuthClient = {
   [k: string]: any;
 };
 
+// Define the session response type
+type SessionResponse = {
+  user: any;
+  session?: any;
+};
+
 export function useAuth() {
   const nuxtApp = useNuxtApp();
   const authClient = nuxtApp.$authClient as PossibleAuthClient | undefined;
@@ -18,8 +24,8 @@ export function useAuth() {
         user.value = ses?.user ?? null;
       }
       else {
-        const data: any = await $fetch("/api/auth/session");
-        user.value = data?.user ?? null;
+        const { data } = await useFetch<SessionResponse>("/api/auth/get-session");
+        user.value = data.value?.user ?? null;
       }
     }
     finally {

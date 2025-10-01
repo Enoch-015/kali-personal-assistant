@@ -56,6 +56,7 @@ async function onSubmit(e: Event) {
       rememberMe: form.remember,
       callbackURL: redirect,
     });
+
     if (signInError) {
       let friendly = signInError.message || "Login failed";
       if (signInError.status === 403) {
@@ -74,6 +75,17 @@ async function onSubmit(e: Event) {
       toast.error(friendly);
       return;
     }
+
+    // Refresh session to populate user state
+    const { refreshSession, user } = useAuth();
+    await refreshSession();
+    // Add this check
+    if (!user.value) {
+      errorMsg.value = "Login succeeded but session not created. Check server logs.";
+      toast.error(errorMsg.value);
+      return;
+    }
+
     toast.success("Signed in successfully");
     await navigateTo(redirect);
   }
