@@ -2,8 +2,6 @@
   "name": "nuxt-app",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@10.0.0",
-
   "scripts": {
     "build": "nuxt build",
     "dev": "concurrently \"pnpm dev:db\" \"nuxt dev\"",
@@ -30,7 +28,6 @@
     "eslint": "^9.35.0",
     "lucide-vue-next": "^0.544.0",
     "nuxt": "^4.1.2",
-    "pnpm": "^10.17.1",
     "shadcn-nuxt": "^2.2.0",
     "sharp": "^0.34.4",
     "tailwind": "^4.0.0",
@@ -50,16 +47,6 @@
     "eslint-plugin-format": "^1.0.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.6"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@tailwindcss/oxide",
-      "core-js",
-      "esbuild",
-      "sharp",
-      "unrs-resolver"
-    ]
   },
   "lint-staged": {
     "*": "pnpm lint"
