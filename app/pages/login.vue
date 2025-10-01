@@ -1,9 +1,102 @@
 <script setup lang="ts">
+import { useToast } from "#imports";
+import { reactive, ref } from "vue";
+
 definePageMeta({ layout: "auth" });
 
-function onSubmit(e: Event) {
+const form = reactive({ email: "", password: "", remember: true });
+const errorMsg = ref("");
+const loading = ref(false);
+
+const route = useRoute();
+// Sanitize redirect: allow only same-origin relative paths, strip any embedded token query to avoid leaking.
+function sanitizeRedirect(raw: any): string {
+  if (typeof raw !== "string" || !raw.startsWith("/"))
+    return "/";
+  try {
+    const u = new URL(raw, "http://dummy.local");
+    u.searchParams.delete("token");
+    return u.pathname + (u.search ? u.search : "") + (u.hash || "");
+  }
+  catch {
+    return "/";
+  }
+}
+const redirect = sanitizeRedirect(route.query.redirect);
+
+async function onSubmit(e: Event) {
   e.preventDefault();
-  return navigateTo("/");
+  errorMsg.value = "";
+  // Basic client-side validation
+  const toast = useToast();
+  if (!form.email) {
+    errorMsg.value = "Email is required";
+    toast.error("Email is required");
+    return;
+  }
+  const at = form.email.indexOf("@");
+  const dot = form.email.lastIndexOf(".");
+  if (!(at > 0 && dot > at + 1 && dot < form.email.length - 1)) {
+    errorMsg.value = "Enter a valid email address";
+    toast.error("Enter a valid email address");
+    return;
+  }
+  if (!form.password) {
+    errorMsg.value = "Password is required";
+    toast.error("Password is required");
+    return;
+  }
+  loading.value = true;
+  try {
+    const nuxtApp = useNuxtApp();
+    const client: any = nuxtApp.$authClient;
+    const { error: signInError } = await client.signIn.email({
+      email: form.email,
+      password: form.password,
+      rememberMe: form.remember,
+      callbackURL: redirect,
+    });
+
+    if (signInError) {
+      let friendly = signInError.message || "Login failed";
+      if (signInError.status === 403) {
+        friendly = "Email not verified. Check your inbox or resend from the sign‑up page.";
+      }
+      else if (signInError.status === 401 || /invalid email or password/i.test(friendly)) {
+        friendly = "Incorrect email or password. You can reset it if you've forgotten.";
+      }
+      else if (/already exists/i.test(friendly)) {
+        friendly = "That email belongs to an existing account. Try logging in instead.";
+      }
+      else if (/too many|rate/i.test(friendly)) {
+        friendly = "Too many attempts. Please wait a minute before trying again.";
+      }
+      errorMsg.value = friendly;
+      toast.error(friendly);
+      return;
+    }
+
+    // Refresh session to populate user state
+    const { refreshSession, user } = useAuth();
+    await refreshSession();
+    // Add this check
+    if (!user.value) {
+      errorMsg.value = "Login succeeded but session not created. Check server logs.";
+      toast.error(errorMsg.value);
+      return;
+    }
+
+    toast.success("Signed in successfully");
+    await navigateTo(redirect);
+  }
+  catch (err: any) {
+    const friendly = err?.message || "Unexpected error during sign in";
+    errorMsg.value = friendly;
+    toast.error(friendly);
+  }
+  finally {
+    loading.value = false;
+  }
 }
 </script>
 
@@ -60,6 +153,7 @@ function onSubmit(e: Event) {
               <label for="email" class="block text-left mb-1">Email</label>
               <input
                 id="email"
+                v-model="form.email"
                 type="email"
                 placeholder="Your email address"
                 class="w-full  px-4 py-3 rounded-lg bg-black-500 shadow-lg border border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-900"
@@ -69,18 +163,29 @@ function onSubmit(e: Event) {
             <div>
               <div class="flex justify-between items-center">
                 <label for="password" class="block mb-1">Password</label>
-                <a href="#" class="text-sm text-purple-400 hover:underline">Forgot password?</a>
+                <NuxtLink to="/forgot-password" class="text-sm text-purple-400 hover:underline">
+                  Forgot password?
+                </NuxtLink>
               </div>
               <input
                 id="password"
+                v-model="form.password"
                 type="password"
                 placeholder="Your password"
                 class="w-full  px-4 py-3 rounded-lg bg-black-500 shadow-lg border border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-900"
               >
             </div>
 
-            <button type="submit" class="w-full bg-black-500 hover:bg-purple-900 opacity-30 py-3 mt-2.5 rounded-lg font-medium border border-gray-900">
-              Log in
+            <div v-if="errorMsg" class="text-xs text-red-400">
+              {{ errorMsg }}
+            </div>
+            <button
+              :disabled="loading"
+              type="submit"
+              class="w-full bg-black-500 hover:bg-purple-900 disabled:opacity-50 py-3 mt-2.5 rounded-lg font-medium border border-gray-900"
+            >
+              <span v-if="!loading">Log in</span>
+              <span v-else>Signing in...</span>
             </button>
           </form>
 
