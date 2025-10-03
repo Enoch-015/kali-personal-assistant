@@ -6,13 +6,13 @@ on:
       - main
       - workingdir
     paths:
-      - 'apps/api/**'
-      - '.github/workflows/test-api.yml'
+      - 'apps/ai/**'
+      - '.github/workflows/test-ai.yml'
   pull_request:
     branches:
       - main
     paths:
-      - 'apps/api/**'
+      - 'apps/ai/**'
 
 jobs:
   test:
@@ -29,17 +29,17 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: 'apps/api/requirements.txt'
+          cache-dependency-path: 'apps/ai/requirements.txt'
 
       - name: Install dependencies
-        working-directory: ./apps/api
+        working-directory: ./apps/ai
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio httpx
 
       - name: Run tests
-        working-directory: ./apps/api
+        working-directory: ./apps/ai
         run: |
           # Add your test command here when you have tests
           # pytest tests/
@@ -65,9 +65,9 @@ jobs:
           pip install ruff black
 
       - name: Run Ruff
-        working-directory: ./apps/api
+        working-directory: ./apps/ai
         run: ruff check src/ || echo "Ruff check completed with warnings"
 
       - name: Check formatting with Black
-        working-directory: ./apps/api
+        working-directory: ./apps/ai
         run: black --check src/ || echo "Black check completed with warnings"

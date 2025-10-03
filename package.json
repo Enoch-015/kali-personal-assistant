@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter web dev",
-    "dev:api": "pnpm --filter api dev",
-    "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:api\"",
+    "dev:ai": "pnpm --filter ai dev",
+    "dev:all": "concurrently \"pnpm dev\" \"pnpm dev:ai\"",
     "build": "pnpm --filter web build",
-    "build:api": "pnpm --filter api build",
+    "build:ai": "pnpm --filter ai build",
     "lint": "pnpm --filter web lint",
     "lint:fix": "pnpm --filter web lint:fix"
   },
