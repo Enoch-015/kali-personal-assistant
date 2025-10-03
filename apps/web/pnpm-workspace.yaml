@@ -1,0 +1,12 @@
+packages:
+  - .
+
+ignoredBuiltDependencies:
+  - "@parcel/watcher"
+  - "@tailwindcss/oxide"
+  - core-js
+  - esbuild
+  - unrs-resolver
+
+onlyBuiltDependencies:
+  - sharp

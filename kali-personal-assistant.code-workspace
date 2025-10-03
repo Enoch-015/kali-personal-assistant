@@ -1,0 +1,37 @@
+{
+  "folders": [
+    {
+      "name": "🏠 Root",
+      "path": "."
+    },
+    {
+      "name": "🌐 Web (Nuxt)",
+      "path": "./apps/web"
+    },
+    {
+      "name": "🐍 API (FastAPI)",
+      "path": "./apps/api"
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "apps/web/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "eslint.workingDirectories": [
+      "./apps/web"
+    ],
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/.nuxt": true,
+      "**/__pycache__": true,
+      "**/dist": true,
+      "**/.output": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.nuxt": true,
+      "**/dist": true,
+      "**/.output": true,
+      "**/pnpm-lock.yaml": true
+    }
+  }
+}

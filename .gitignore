@@ -1,27 +1,30 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-dist
-
-# Node dependencies
-node_modules
+# Dependencies
+node_modules/
+.pnpm-store/
 
 # Logs
 logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# Misc
+# OS
 .DS_Store
-.fleet
-.idea
+Thumbs.db
 
-# Local env files
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables (use app-specific .env files)
 .env
-.env.*   
-!.env.example
+.env.local
+.env.*.local
 
-
-local.db*
+# Build outputs are in individual apps

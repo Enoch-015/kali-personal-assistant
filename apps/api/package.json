@@ -1,0 +1,10 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd src && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "build": "echo 'Python build complete'",
+    "start": "cd src && uvicorn main:app --host 0.0.0.0 --port 8000"
+  }
+}
