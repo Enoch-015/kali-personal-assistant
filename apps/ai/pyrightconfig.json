@@ -1,0 +1,5 @@
+{
+  "include": ["src/**/*.py", "tests/**/*.py"],
+  "extraPaths": ["src"],
+  "typeCheckingMode": "standard"
+}
