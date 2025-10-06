@@ -52,7 +52,10 @@ class RedisEventBus:
                 yield RedisEvent(channel=channel, payload=data)
         finally:
             await pubsub.unsubscribe(channel)
-            await pubsub.close()
+            if hasattr(pubsub, "aclose"):
+                await pubsub.aclose()
+            else:  # pragma: no cover - compatibility fallback
+                await pubsub.close()
             logger.info("Unsubscribed from Redis channel %s", channel)
 
     async def ping(self) -> bool:
@@ -64,7 +67,10 @@ class RedisEventBus:
             return False
 
     async def close(self) -> None:
-        await self._redis.close()
+        if hasattr(self._redis, "aclose"):
+            await self._redis.aclose()
+        else:  # pragma: no cover - compatibility fallback
+            await self._redis.close()
 
     @property
     def request_channel(self) -> str:
