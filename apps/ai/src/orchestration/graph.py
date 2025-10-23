@@ -11,14 +11,15 @@ from .models import (
     MemoryUpdate,
     OrchestrationRequest,
     PolicyDecision,
+    ReviewAction,
     PluginDispatchResult,
     ReviewFeedback,
     WorkflowStatus,
 )
 from .memory import get_memory_service
-from .policy import get_policy_engine
+from .policy import get_policy_engine, get_policy_feedback_agent
 from .plugins.base import registry
-from .review import get_agent_sentinel
+from .review import get_agent_sentinel, get_review_agent
 
 
 def _require_request(state: AgentState) -> OrchestrationRequest:
@@ -32,6 +33,18 @@ def _with_event(state: AgentState, event: AgentEvent) -> List[AgentEvent]:
     existing = list(state.get("events") or [])
     existing.append(event)
     return existing
+
+
+def _review_route(state: AgentState) -> ReviewAction:
+    action = state.get("review_action")
+    if isinstance(action, ReviewAction):
+        return action
+    if isinstance(action, str):
+        try:
+            return ReviewAction(action)
+        except ValueError:
+            return ReviewAction.COMPLETE
+    return ReviewAction.COMPLETE
 
 
 async def route_request(state: AgentState) -> Dict[str, Any]:
@@ -59,11 +72,15 @@ async def route_request(state: AgentState) -> Dict[str, Any]:
 
 async def policy_check(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
+    feedback_agent = get_policy_feedback_agent()
+    captured_directives = feedback_agent.capture(request)
     policy_engine = get_policy_engine()
     decision: PolicyDecision = policy_engine.evaluate(request)
     notes = list(state.get("working_notes") or [])
     note = f"Policy decision: {decision.reason}"
     notes.append(note)
+    if captured_directives:
+        notes.append(f"Captured {len(captured_directives)} policy directive(s)")
 
     event = AgentEvent(
         type="policy.review",
@@ -72,6 +89,9 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
             "allowed": decision.allowed,
             "requires_human": decision.requires_human,
             "policy_version": decision.policy_version,
+            "captured_directives": [directive.to_record() for directive in captured_directives]
+            if captured_directives
+            else [],
         },
     )
     if not decision.allowed:
@@ -82,6 +102,9 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
         "policy_decision": decision,
         "requires_human_approval": decision.requires_human or state.get("requires_human_approval", False),
         "working_notes": notes,
+        "captured_policy_directives": [directive.to_record() for directive in captured_directives]
+        if captured_directives
+        else [],
         "events": _with_event(state, event),
     }
 
@@ -89,10 +112,10 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
 async def fetch_context(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
-    snapshot = memory_service.retrieve_context(request)
+    snapshot = await memory_service.retrieve_context(request)
     validation = memory_service.validate_relevance(snapshot, request.intent)
     notes = list(state.get("working_notes") or [])
-    notes.append("Context hydrated from memory layer placeholder")
+    notes.append(f"Context hydrated from {memory_service.provider} memory layer")
 
     event = AgentEvent(
         type="context.fetched",
@@ -250,12 +273,64 @@ def review_outcome(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def update_memory(state: AgentState) -> Dict[str, Any]:
+def run_review_agent(state: AgentState) -> Dict[str, Any]:
+    agent = get_review_agent()
+    action, message = agent.evaluate(state)
+    notes = list(state.get("working_notes") or [])
+    if message:
+        notes.append(message)
+
+    retry_count = int(state.get("retry_count") or 0)
+    updates: Dict[str, Any] = {
+        "review_agent_message": message,
+        "review_action": action,
+        "working_notes": notes,
+    }
+
+    event = AgentEvent(
+        type="review.agent",
+        message=message or "Review agent processed workflow",
+        data={
+            "action": action.value,
+            "retry_count": retry_count,
+        },
+    )
+
+    if action == ReviewAction.RETRY:
+        retry_count += 1
+        updates["retry_count"] = retry_count
+        updates["requires_human_approval"] = False
+        updates["status"] = WorkflowStatus.ROUTING
+        event.data["retry_count"] = retry_count
+        updates.update(
+            {
+                "selected_plugin": None,
+                "rendered_message": None,
+                "plugin_result": None,
+                "review_feedback": None,
+                "policy_decision": None,
+                "analysis_summary": None,
+                "planned_actions": [],
+                "retrieved_context": {},
+                "context_validation": {},
+            }
+        )
+    else:
+        updates["retry_count"] = retry_count
+        updates["status"] = WorkflowStatus.REVIEWING
+
+    updates["events"] = _with_event(state, event)
+    return updates
+
+
+async def update_memory(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
     plugin_result: PluginDispatchResult | None = state.get("plugin_result")
     reflection: str = state.get("analysis_summary", "")
     updates: List[MemoryUpdate] = memory_service.prepare_updates(request, plugin_result, reflection)
+
+    await memory_service.commit_updates(request, updates)
 
     event = AgentEvent(
         type="memory.updated",
@@ -299,6 +374,7 @@ def build_langgraph(checkpointer: Optional[InMemorySaver] = None) -> Any:
     builder.add_node("render_payload", render_payload)
     builder.add_node("execute_plugin", execute_plugin)
     builder.add_node("review_outcome", review_outcome)
+    builder.add_node("review_agent", run_review_agent)
     builder.add_node("update_memory", update_memory)
     builder.add_node("finalize", finalize)
 
@@ -318,7 +394,15 @@ def build_langgraph(checkpointer: Optional[InMemorySaver] = None) -> Any:
         },
     )
     builder.add_edge("execute_plugin", "review_outcome")
-    builder.add_edge("review_outcome", "update_memory")
+    builder.add_edge("review_outcome", "review_agent")
+    builder.add_conditional_edges(
+        "review_agent",
+        _review_route,
+        {
+            ReviewAction.RETRY: "route_request",
+            ReviewAction.COMPLETE: "update_memory",
+        },
+    )
     builder.add_edge("update_memory", "finalize")
     builder.add_edge("finalize", END)
 
