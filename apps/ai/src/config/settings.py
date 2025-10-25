@@ -5,12 +5,28 @@ from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 from dotenv import dotenv_values
-from pydantic import AliasChoices, BaseModel, Field, RedisDsn, ValidationInfo, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, RedisDsn, ValidationInfo, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _default_redis_url() -> RedisDsn:
     return RedisDsn("redis://localhost:6379/0")
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+    return bool(value)
+
+
+def _coerce_str(value: Any) -> str:
+    return str(value).strip()
+
+
+def _coerce_int(value: Any) -> int:
+    return int(str(value))
 
 
 class RedisSettings(BaseModel):
@@ -106,6 +122,7 @@ class LangGraphSettings(BaseModel):
 
 
 class GraphitiSettings(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     enabled: bool = Field(
         default=False,
         description="Enable Graphiti knowledge graph integration when credentials are provided.",
@@ -386,6 +403,10 @@ class Settings(BaseSettings):
         if graphiti_env_overrides:
             self.graphiti = self.graphiti.model_copy(update=graphiti_env_overrides)
 
+        mongo_env_overrides = self._extract_mongo_env_overrides()
+        if mongo_env_overrides:
+            self.mongo = self.mongo.model_copy(update=mongo_env_overrides)
+
         if self.environment == "production":
             candidate = self.redis_url_override or self.redis.url
             self.redis = self.redis.model_copy(update={"url": candidate})
@@ -412,15 +433,8 @@ class Settings(BaseSettings):
     def _extract_graphiti_env_overrides(self) -> dict[str, Any]:
         extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
 
-        def coerce_bool(value: Any) -> bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
-            return bool(value)
-
-        def coerce_str(value: Any) -> str:
-            return str(value).strip()
+        coerce_bool = _coerce_bool
+        coerce_str = _coerce_str
 
         mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
             # General
@@ -530,6 +544,52 @@ class Settings(BaseSettings):
                 overrides[field_name] = transform(value)
             except Exception:
                 continue
+        return overrides
+
+    def _extract_mongo_env_overrides(self) -> dict[str, Any]:
+        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
+
+        mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
+            "mongo_enabled": ("enabled", _coerce_bool),
+            "mongodb_enabled": ("enabled", _coerce_bool),
+            "mongo_uri": ("uri", _coerce_str),
+            "mongodb_uri": ("uri", _coerce_str),
+            "mongo_database": ("database", _coerce_str),
+            "mongodb_database": ("database", _coerce_str),
+            "mongo_policies_collection": ("policies_collection", _coerce_str),
+            "mongodb_policies_collection": ("policies_collection", _coerce_str),
+            "mongo_server_selection_timeout_ms": ("server_selection_timeout_ms", _coerce_int),
+            "mongodb_server_selection_timeout_ms": ("server_selection_timeout_ms", _coerce_int),
+        }
+
+        overrides: dict[str, Any] = {}
+        extras_lower = {(key or "").lower(): value for key, value in extras.items() if value is not None}
+        env_file_values: dict[str, Any] = {}
+        if _ENV_FILE_PATH.exists():
+            try:
+                env_file_values = {
+                    (key or "").lower(): value
+                    for key, value in (dotenv_values(_ENV_FILE_PATH) or {}).items()
+                    if value is not None
+                }
+            except Exception:
+                env_file_values = {}
+
+        for alias, (field_name, transform) in mapping.items():
+            value = extras_lower.get(alias)
+            if value is None:
+                env_key = alias.upper()
+                if env_key in os.environ:
+                    value = os.environ[env_key]
+            if value is None:
+                value = env_file_values.get(alias)
+            if value is None:
+                continue
+            try:
+                overrides[field_name] = transform(value)
+            except Exception:
+                continue
+
         return overrides
 
 

@@ -20,6 +20,7 @@ from src.orchestration.models import (
     WorkflowStatus,
 )
 from src.orchestration.plugins.demo import register_demo_plugin
+from src.orchestration.reasoning import configure_reasoning_from_settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class AgentOrchestrator:
         self._settings = settings
         self._event_bus = event_bus
         self._checkpointer = checkpointer or InMemorySaver()
+        configure_reasoning_from_settings(settings)
         self._graph = build_langgraph(checkpointer=self._checkpointer)
         self._consumer_task: Optional[asyncio.Task[None]] = None
         self._shutdown = asyncio.Event()
