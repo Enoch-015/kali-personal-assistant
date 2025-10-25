@@ -21,6 +21,11 @@ class WorkflowStatus(str, Enum):
     FAILED = "failed"
 
 
+class ReviewAction(str, Enum):
+    RETRY = "retry"
+    COMPLETE = "complete"
+
+
 class Audience(BaseModel):
     recipients: List[str] = Field(default_factory=list, description="List of recipient IDs")
     segment_id: Optional[str] = Field(
@@ -106,6 +111,10 @@ class AgentState(TypedDict, total=False):
     requires_human_approval: bool
     events: List[AgentEvent]
     error: str
+    captured_policy_directives: List[Dict[str, str]]
+    retry_count: int
+    review_action: ReviewAction
+    review_agent_message: str
 
 
 def new_initial_state(request: OrchestrationRequest) -> AgentState:
@@ -115,4 +124,5 @@ def new_initial_state(request: OrchestrationRequest) -> AgentState:
         "working_notes": [],
         "events": [],
         "requires_human_approval": False,
+        "retry_count": 0,
     }

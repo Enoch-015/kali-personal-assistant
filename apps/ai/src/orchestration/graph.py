@@ -11,14 +11,16 @@ from .models import (
     MemoryUpdate,
     OrchestrationRequest,
     PolicyDecision,
+    ReviewAction,
     PluginDispatchResult,
     ReviewFeedback,
     WorkflowStatus,
 )
 from .memory import get_memory_service
-from .policy import get_policy_engine
+from .policy import get_policy_engine, get_policy_feedback_agent
 from .plugins.base import registry
-from .review import get_agent_sentinel
+from .review import get_agent_sentinel, get_review_agent
+from .reasoning import get_reasoning_agent
 
 
 def _require_request(state: AgentState) -> OrchestrationRequest:
@@ -34,20 +36,36 @@ def _with_event(state: AgentState, event: AgentEvent) -> List[AgentEvent]:
     return existing
 
 
+def _review_route(state: AgentState) -> ReviewAction:
+    action = state.get("review_action")
+    if isinstance(action, ReviewAction):
+        return action
+    if isinstance(action, str):
+        try:
+            return ReviewAction(action)
+        except ValueError:
+            return ReviewAction.COMPLETE
+    return ReviewAction.COMPLETE
+
+
 async def route_request(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
-    workflow = request.metadata.get("workflow")
-    if not workflow:
-        workflow = "broadcast" if request.audience else "generic-task"
+    reasoner = get_reasoning_agent()
+    decision = await reasoner.decide_workflow(request, prior_notes=state.get("working_notes"))
+    workflow = decision.workflow or "generic-task"
 
-    note = f"Routed intent '{request.intent}' to workflow '{workflow}'"
+    note = decision.rationale or f"Routed intent '{request.intent}' to workflow '{workflow}'"
     notes = list(state.get("working_notes") or [])
     notes.append(note)
 
     event = AgentEvent(
         type="router.decision",
         message=note,
-        data={"request_id": request.request_id, "channel": request.channel},
+        data={
+            "request_id": request.request_id,
+            "channel": request.channel,
+            "decision_tags": decision.tags,
+        },
     )
     return {
         "status": WorkflowStatus.ROUTING,
@@ -59,11 +77,15 @@ async def route_request(state: AgentState) -> Dict[str, Any]:
 
 async def policy_check(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
+    feedback_agent = get_policy_feedback_agent()
+    captured_directives = feedback_agent.capture(request)
     policy_engine = get_policy_engine()
     decision: PolicyDecision = policy_engine.evaluate(request)
     notes = list(state.get("working_notes") or [])
     note = f"Policy decision: {decision.reason}"
     notes.append(note)
+    if captured_directives:
+        notes.append(f"Captured {len(captured_directives)} policy directive(s)")
 
     event = AgentEvent(
         type="policy.review",
@@ -72,6 +94,9 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
             "allowed": decision.allowed,
             "requires_human": decision.requires_human,
             "policy_version": decision.policy_version,
+            "captured_directives": [directive.to_record() for directive in captured_directives]
+            if captured_directives
+            else [],
         },
     )
     if not decision.allowed:
@@ -82,6 +107,9 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
         "policy_decision": decision,
         "requires_human_approval": decision.requires_human or state.get("requires_human_approval", False),
         "working_notes": notes,
+        "captured_policy_directives": [directive.to_record() for directive in captured_directives]
+        if captured_directives
+        else [],
         "events": _with_event(state, event),
     }
 
@@ -89,10 +117,10 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
 async def fetch_context(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
-    snapshot = memory_service.retrieve_context(request)
+    snapshot = await memory_service.retrieve_context(request)
     validation = memory_service.validate_relevance(snapshot, request.intent)
     notes = list(state.get("working_notes") or [])
-    notes.append("Context hydrated from memory layer placeholder")
+    notes.append(f"Context hydrated from {memory_service.provider} memory layer")
 
     event = AgentEvent(
         type="context.fetched",
@@ -112,72 +140,89 @@ async def fetch_context(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def plan_actions(state: AgentState) -> Dict[str, Any]:
+async def plan_actions(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
+    reasoner = get_reasoning_agent()
     workflow = state.get("selected_workflow", "generic-task")
-    plan = [
-        {"step": 1, "action": "analyse_intent", "details": request.intent},
-        {"step": 2, "action": "prepare_tool_invocation", "details": workflow},
-    ]
+    context = state.get("retrieved_context")
+
+    plan = await reasoner.build_plan(request, workflow=workflow, context=context)
+
+    notes = list(state.get("working_notes") or [])
+    notes.append(f"Planning agent proposed {len(plan)} step(s) for workflow '{workflow}'")
+
     event = AgentEvent(
         type="planner.plan_created",
         message="Created high-level plan",
-        data={"steps": len(plan)},
+        data={"steps": len(plan), "workflow": workflow},
     )
     return {
         "status": WorkflowStatus.PLANNING,
         "planned_actions": plan,
+        "working_notes": notes,
         "events": _with_event(state, event),
     }
 
 
-def agent_reflection(state: AgentState) -> Dict[str, Any]:
+async def agent_reflection(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
-    context = state.get("retrieved_context", {})
+    reasoner = get_reasoning_agent()
+    workflow = state.get("selected_workflow", "generic-task")
     plan = state.get("planned_actions", [])
+    context = state.get("retrieved_context") or {}
+    validation = state.get("context_validation") or {}
+    policy_decision = state.get("policy_decision")
 
-    summary_parts = [
-        f"Intent: {request.intent}",
-        f"Planned steps: {len(plan)}",
-        f"Context snippets: {len(context.get('memory_snippets', []))}",
-    ]
-    context_validation = state.get("context_validation")
-    if context_validation:
-        summary_parts.append(context_validation.get("summary", ""))
-    reflection = " | ".join(part for part in summary_parts if part)
+    reflection = await reasoner.generate_reflection(
+        request,
+        workflow=workflow,
+        plan=plan,
+        context=context,
+        validation=validation,
+        policy_decision=policy_decision,
+    )
+
+    notes = list(state.get("working_notes") or [])
+    notes.append("Reasoning agent produced reflection summary")
 
     event = AgentEvent(
         type="agent.reflect",
         message="Generated reasoning summary",
-        data={"summary": reflection},
+        data={"summary": reflection, "workflow": workflow},
     )
 
     return {
         "status": WorkflowStatus.REFLECTING,
         "analysis_summary": reflection,
+        "working_notes": notes,
         "events": _with_event(state, event),
     }
 
 
-def select_plugin(state: AgentState) -> Dict[str, Any]:
+async def select_plugin(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
+    reasoner = get_reasoning_agent()
     workflow = state.get("selected_workflow", "generic-task")
-    preferred = request.metadata.get("plugin") if request.metadata else None
+    plan = state.get("planned_actions", [])
+    metadata = request.metadata or {}
 
-    candidate = preferred or request.channel or "demo-messaging"
-    if workflow == "generic-task":
-        candidate = preferred or "demo-messaging"
+    decision = await reasoner.choose_plugin(request, workflow=workflow, plan=plan)
 
     notes = list(state.get("working_notes") or [])
-    notes.append(f"Selected plugin candidate '{candidate}'")
+    notes.append(decision.rationale)
 
     event = AgentEvent(
         type="plugin.selected",
-        message=f"Candidate plugin '{candidate}' chosen",
-        data={"preferred": preferred, "channel": request.channel},
+        message=f"Candidate plugin '{decision.plugin_name}' chosen",
+        data={
+            "preferred": metadata.get("plugin"),
+            "channel": request.channel,
+            "confidence": decision.confidence,
+            "rationale": decision.rationale,
+        },
     )
     return {
-        "selected_plugin": candidate,
+        "selected_plugin": decision.plugin_name,
         "working_notes": notes,
         "events": _with_event(state, event),
     }
@@ -250,12 +295,64 @@ def review_outcome(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def update_memory(state: AgentState) -> Dict[str, Any]:
+def run_review_agent(state: AgentState) -> Dict[str, Any]:
+    agent = get_review_agent()
+    action, message = agent.evaluate(state)
+    notes = list(state.get("working_notes") or [])
+    if message:
+        notes.append(message)
+
+    retry_count = int(state.get("retry_count") or 0)
+    updates: Dict[str, Any] = {
+        "review_agent_message": message,
+        "review_action": action,
+        "working_notes": notes,
+    }
+
+    event = AgentEvent(
+        type="review.agent",
+        message=message or "Review agent processed workflow",
+        data={
+            "action": action.value,
+            "retry_count": retry_count,
+        },
+    )
+
+    if action == ReviewAction.RETRY:
+        retry_count += 1
+        updates["retry_count"] = retry_count
+        updates["requires_human_approval"] = False
+        updates["status"] = WorkflowStatus.ROUTING
+        event.data["retry_count"] = retry_count
+        updates.update(
+            {
+                "selected_plugin": None,
+                "rendered_message": None,
+                "plugin_result": None,
+                "review_feedback": None,
+                "policy_decision": None,
+                "analysis_summary": None,
+                "planned_actions": [],
+                "retrieved_context": {},
+                "context_validation": {},
+            }
+        )
+    else:
+        updates["retry_count"] = retry_count
+        updates["status"] = WorkflowStatus.REVIEWING
+
+    updates["events"] = _with_event(state, event)
+    return updates
+
+
+async def update_memory(state: AgentState) -> Dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
     plugin_result: PluginDispatchResult | None = state.get("plugin_result")
     reflection: str = state.get("analysis_summary", "")
     updates: List[MemoryUpdate] = memory_service.prepare_updates(request, plugin_result, reflection)
+
+    await memory_service.commit_updates(request, updates)
 
     event = AgentEvent(
         type="memory.updated",
@@ -299,6 +396,7 @@ def build_langgraph(checkpointer: Optional[InMemorySaver] = None) -> Any:
     builder.add_node("render_payload", render_payload)
     builder.add_node("execute_plugin", execute_plugin)
     builder.add_node("review_outcome", review_outcome)
+    builder.add_node("review_agent", run_review_agent)
     builder.add_node("update_memory", update_memory)
     builder.add_node("finalize", finalize)
 
@@ -318,7 +416,15 @@ def build_langgraph(checkpointer: Optional[InMemorySaver] = None) -> Any:
         },
     )
     builder.add_edge("execute_plugin", "review_outcome")
-    builder.add_edge("review_outcome", "update_memory")
+    builder.add_edge("review_outcome", "review_agent")
+    builder.add_conditional_edges(
+        "review_agent",
+        _review_route,
+        {
+            ReviewAction.RETRY: "route_request",
+            ReviewAction.COMPLETE: "update_memory",
+        },
+    )
     builder.add_edge("update_memory", "finalize")
     builder.add_edge("finalize", END)
 
