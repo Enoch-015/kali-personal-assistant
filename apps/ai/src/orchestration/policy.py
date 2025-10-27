@@ -357,15 +357,15 @@ def _flatten_request_text(request: OrchestrationRequest) -> str:
         if isinstance(value, str):
             return [value]
         if isinstance(value, dict):
-            items: list[str] = []
+            dict_items: list[str] = []
             for candidate in value.values():
-                items.extend(_flatten(candidate))
-            return items
+                dict_items.extend(_flatten(candidate))
+            return dict_items
         if isinstance(value, (list, tuple, set)):
-            items: list[str] = []
+            collection_items: list[str] = []
             for candidate in value:
-                items.extend(_flatten(candidate))
-            return items
+                collection_items.extend(_flatten(candidate))
+            return collection_items
         return [str(value)]
 
     parts.extend(_flatten(request.metadata))
