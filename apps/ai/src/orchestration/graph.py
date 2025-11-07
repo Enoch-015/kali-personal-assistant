@@ -1,26 +1,26 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from .memory import get_memory_service
 from .models import (
     AgentEvent,
     AgentState,
     MemoryUpdate,
     OrchestrationRequest,
+    PluginDispatchResult,
     PolicyDecision,
     ReviewAction,
-    PluginDispatchResult,
     ReviewFeedback,
     WorkflowStatus,
 )
-from .memory import get_memory_service
-from .policy import get_policy_engine, get_policy_feedback_agent
 from .plugins.base import registry
-from .review import get_agent_sentinel, get_review_agent
+from .policy import get_policy_engine, get_policy_feedback_agent
 from .reasoning import get_reasoning_agent
+from .review import get_agent_sentinel, get_review_agent
 
 
 def _require_request(state: AgentState) -> OrchestrationRequest:
@@ -30,7 +30,7 @@ def _require_request(state: AgentState) -> OrchestrationRequest:
     return request
 
 
-def _with_event(state: AgentState, event: AgentEvent) -> List[AgentEvent]:
+def _with_event(state: AgentState, event: AgentEvent) -> list[AgentEvent]:
     existing = list(state.get("events") or [])
     existing.append(event)
     return existing
@@ -48,14 +48,52 @@ def _review_route(state: AgentState) -> ReviewAction:
     return ReviewAction.COMPLETE
 
 
-async def route_request(state: AgentState) -> Dict[str, Any]:
+async def route_request(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     reasoner = get_reasoning_agent()
-    decision = await reasoner.decide_workflow(request, prior_notes=state.get("working_notes"))
+
+    # Gather prior notes and review feedback for intelligent replanning
+    prior_notes = list(state.get("working_notes") or [])
+
+    # If this is a retry, incorporate review feedback into routing decision
+    retry_count = int(state.get("retry_count") or 0)
+    if retry_count > 0:
+        review_feedback = state.get("review_feedback")
+        if review_feedback and review_feedback.review_notes:
+            notes_obj = review_feedback.review_notes
+
+            # Add context from previous attempt
+            prior_notes.append(f"[Retry {retry_count}] Previous attempt completed at stage: {notes_obj.workflow_stage}")
+
+            # Add successful steps to avoid repeating what worked
+            if notes_obj.successful_steps:
+                prior_notes.append(f"Successful steps: {', '.join(notes_obj.successful_steps[:3])}")
+
+            # Add issue context for better decision making
+            if notes_obj.issues_found:
+                issue_categories = {issue.category.value for issue in notes_obj.issues_found}
+                prior_notes.append(f"Issues encountered: {', '.join(issue_categories)}")
+
+            # Add recommendations from review
+            if notes_obj.recommendations:
+                prior_notes.append(f"Recommendations: {'; '.join(notes_obj.recommendations[:2])}")
+
+            # Add specific routing context
+            if notes_obj.routing_context:
+                if notes_obj.routing_context.get("failed_plugin"):
+                    prior_notes.append(
+                        f"Avoid plugin: {notes_obj.routing_context['failed_plugin']}"
+                    )
+                if notes_obj.routing_context.get("policy_blocked"):
+                    prior_notes.append(
+                        f"Policy constraint: {notes_obj.routing_context.get('policy_reason', 'unknown')}"
+                    )
+
+    decision = await reasoner.decide_workflow(request, prior_notes=prior_notes)
     workflow = decision.workflow or "generic-task"
 
     note = decision.rationale or f"Routed intent '{request.intent}' to workflow '{workflow}'"
-    notes = list(state.get("working_notes") or [])
+    notes = prior_notes  # Keep accumulated notes
     notes.append(note)
 
     event = AgentEvent(
@@ -65,6 +103,7 @@ async def route_request(state: AgentState) -> Dict[str, Any]:
             "request_id": request.request_id,
             "channel": request.channel,
             "decision_tags": decision.tags,
+            "retry_count": retry_count,
         },
     )
     return {
@@ -75,7 +114,7 @@ async def route_request(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def policy_check(state: AgentState) -> Dict[str, Any]:
+async def policy_check(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     feedback_agent = get_policy_feedback_agent()
     captured_directives = feedback_agent.capture(request)
@@ -114,7 +153,7 @@ async def policy_check(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def fetch_context(state: AgentState) -> Dict[str, Any]:
+async def fetch_context(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
     snapshot = await memory_service.retrieve_context(request)
@@ -140,7 +179,7 @@ async def fetch_context(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def plan_actions(state: AgentState) -> Dict[str, Any]:
+async def plan_actions(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     reasoner = get_reasoning_agent()
     workflow = state.get("selected_workflow", "generic-task")
@@ -164,7 +203,7 @@ async def plan_actions(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def agent_reflection(state: AgentState) -> Dict[str, Any]:
+async def agent_reflection(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     reasoner = get_reasoning_agent()
     workflow = state.get("selected_workflow", "generic-task")
@@ -199,7 +238,7 @@ async def agent_reflection(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def select_plugin(state: AgentState) -> Dict[str, Any]:
+async def select_plugin(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     reasoner = get_reasoning_agent()
     workflow = state.get("selected_workflow", "generic-task")
@@ -228,7 +267,7 @@ async def select_plugin(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def render_payload(state: AgentState) -> Dict[str, Any]:
+def render_payload(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     payload = request.payload or {}
     template = payload.get("template") or "[demo] {intent}"
@@ -249,7 +288,7 @@ def render_payload(state: AgentState) -> Dict[str, Any]:
     }
 
 
-async def execute_plugin(state: AgentState) -> Dict[str, Any]:
+async def execute_plugin(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     plugin_name = state.get("selected_plugin")
     plugin = registry.get(plugin_name) if plugin_name else None
@@ -270,7 +309,7 @@ async def execute_plugin(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def review_outcome(state: AgentState) -> Dict[str, Any]:
+def review_outcome(state: AgentState) -> dict[str, Any]:
     sentinel = get_agent_sentinel()
     feedback: ReviewFeedback = sentinel.review(state)
     notes = list(state.get("working_notes") or [])
@@ -295,7 +334,7 @@ def review_outcome(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def run_review_agent(state: AgentState) -> Dict[str, Any]:
+def run_review_agent(state: AgentState) -> dict[str, Any]:
     agent = get_review_agent()
     action, message = agent.evaluate(state)
     notes = list(state.get("working_notes") or [])
@@ -303,7 +342,7 @@ def run_review_agent(state: AgentState) -> Dict[str, Any]:
         notes.append(message)
 
     retry_count = int(state.get("retry_count") or 0)
-    updates: Dict[str, Any] = {
+    updates: dict[str, Any] = {
         "review_agent_message": message,
         "review_action": action,
         "working_notes": notes,
@@ -345,12 +384,12 @@ def run_review_agent(state: AgentState) -> Dict[str, Any]:
     return updates
 
 
-async def update_memory(state: AgentState) -> Dict[str, Any]:
+async def update_memory(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     memory_service = get_memory_service()
     plugin_result: PluginDispatchResult | None = state.get("plugin_result")
     reflection: str = state.get("analysis_summary", "")
-    updates: List[MemoryUpdate] = memory_service.prepare_updates(request, plugin_result, reflection)
+    updates: list[MemoryUpdate] = memory_service.prepare_updates(request, plugin_result, reflection)
 
     await memory_service.commit_updates(request, updates)
 
@@ -367,7 +406,7 @@ async def update_memory(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def finalize(state: AgentState) -> Dict[str, Any]:
+def finalize(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
     event = AgentEvent(
         type="workflow.completed",
@@ -385,7 +424,7 @@ def _plugin_route(state: AgentState) -> str:
     return "dispatch" if state.get("selected_plugin") else "skip"
 
 
-def build_langgraph(checkpointer: Optional[InMemorySaver] = None) -> Any:
+def build_langgraph(checkpointer: InMemorySaver | None = None) -> Any:
     builder = StateGraph(AgentState)
     builder.add_node("route_request", route_request)
     builder.add_node("policy_check", policy_check)

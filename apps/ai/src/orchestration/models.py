@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -27,14 +27,14 @@ class ReviewAction(str, Enum):
 
 
 class Audience(BaseModel):
-    recipients: List[str] = Field(default_factory=list, description="List of recipient IDs")
-    segment_id: Optional[str] = Field(
+    recipients: list[str] = Field(default_factory=list, description="List of recipient IDs")
+    segment_id: str | None = Field(
         default=None, description="Optional identifier for a saved recipient segment"
     )
 
     @field_validator("recipients")
     @classmethod
-    def ensure_recipients_present(cls, value: List[str]) -> List[str]:
+    def ensure_recipients_present(cls, value: list[str]) -> list[str]:
         if not value:
             raise ValueError("At least one recipient must be provided")
         return value
@@ -47,50 +47,90 @@ class OrchestrationRequest(BaseModel):
         default="demo",
         description="Requested connector / plugin name (e.g. whatsapp, email, calendar)",
     )
-    audience: Optional[Audience] = None
-    payload: Dict[str, Any] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    audience: Audience | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PluginDispatchResult(BaseModel):
     plugin_name: str
     dispatched_count: int
-    failed: List[str] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    failed: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PolicyDecision(BaseModel):
     allowed: bool = True
     reason: str = "Request satisfies policy checks"
     requires_human: bool = False
-    policy_version: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    policy_version: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class MemorySnapshot(BaseModel):
-    memory_snippets: List[str] = Field(default_factory=list)
-    graph_relations: List[str] = Field(default_factory=list)
-    vector_results: List[str] = Field(default_factory=list)
+    memory_snippets: list[str] = Field(default_factory=list)
+    graph_relations: list[str] = Field(default_factory=list)
+    vector_results: list[str] = Field(default_factory=list)
     freshness_seconds: int = 0
 
 
 class MemoryUpdate(BaseModel):
     summary: str
-    annotations: Dict[str, Any] = Field(default_factory=dict)
+    annotations: dict[str, Any] = Field(default_factory=dict)
     tokens_used: int = 0
+
+
+class ReviewIssueCategory(str, Enum):
+    """Categories for issues identified during review."""
+    POLICY = "policy"
+    PLUGIN = "plugin"
+    CONTEXT = "context"
+    PLANNING = "planning"
+    EXECUTION = "execution"
+    VALIDATION = "validation"
+    OTHER = "other"
+
+
+class ReviewIssue(BaseModel):
+    """Detailed issue identified during review."""
+    category: ReviewIssueCategory
+    description: str
+    severity: str = Field(default="medium", description="low, medium, high, critical")
+    context: dict[str, Any] = Field(default_factory=dict)
+    actionable: bool = Field(default=True, description="Whether issue can be addressed by retry")
+
+
+class ReviewNotes(BaseModel):
+    """Detailed notes from review for routing agent consumption."""
+    workflow_stage: str = Field(description="Stage where review occurred")
+    issues_found: list[ReviewIssue] = Field(default_factory=list)
+    successful_steps: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    routing_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Context to help routing agent make better decisions on retry"
+    )
 
 
 class ReviewFeedback(BaseModel):
     approved: bool = True
     requires_human: bool = False
     summary: str = ""
-    issues: List[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    detailed_issues: list[ReviewIssue] = Field(
+        default_factory=list,
+        description="Categorized issues for intelligent review"
+    )
+    review_notes: ReviewNotes | None = Field(
+        default=None,
+        description="Detailed notes for routing agent on failure"
+    )
 
 
 class AgentEvent(BaseModel):
     type: str
     message: str
-    data: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentState(TypedDict, total=False):
@@ -98,20 +138,20 @@ class AgentState(TypedDict, total=False):
     status: WorkflowStatus
     selected_workflow: str
     policy_decision: PolicyDecision
-    working_notes: List[str]
-    retrieved_context: Dict[str, Any]
-    context_validation: Dict[str, Any]
-    planned_actions: List[Dict[str, Any]]
+    working_notes: list[str]
+    retrieved_context: dict[str, Any]
+    context_validation: dict[str, Any]
+    planned_actions: list[dict[str, Any]]
     analysis_summary: str
     selected_plugin: str
-    rendered_message: Optional[str]
+    rendered_message: str | None
     plugin_result: PluginDispatchResult
     review_feedback: ReviewFeedback
-    memory_updates: List[MemoryUpdate]
+    memory_updates: list[MemoryUpdate]
     requires_human_approval: bool
-    events: List[AgentEvent]
+    events: list[AgentEvent]
     error: str
-    captured_policy_directives: List[Dict[str, str]]
+    captured_policy_directives: list[dict[str, str]]
     retry_count: int
     review_action: ReviewAction
     review_agent_message: str
