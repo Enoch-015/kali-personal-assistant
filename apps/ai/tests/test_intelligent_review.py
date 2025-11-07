@@ -1,4 +1,3 @@
-import pytest
 
 from src.orchestration.models import (
     AgentState,
@@ -52,7 +51,7 @@ def test_sentinel_captures_plugin_failure_with_details() -> None:
 def test_sentinel_identifies_empty_plan() -> None:
     """Test that sentinel detects when no actions are planned."""
     sentinel = get_agent_sentinel()
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="do_something", channel="demo"),
         "status": WorkflowStatus.PLANNING,
@@ -63,9 +62,9 @@ def test_sentinel_identifies_empty_plan() -> None:
         "requires_human_approval": False,
         "retry_count": 0,
     }
-    
+
     feedback = sentinel.review(state)
-    
+
     assert len(feedback.detailed_issues) >= 1
     planning_issues = [i for i in feedback.detailed_issues if i.category == ReviewIssueCategory.PLANNING]
     assert len(planning_issues) == 1
@@ -75,7 +74,7 @@ def test_sentinel_identifies_empty_plan() -> None:
 def test_sentinel_tracks_successful_steps() -> None:
     """Test that sentinel records successful workflow steps."""
     sentinel = get_agent_sentinel()
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="test", channel="demo"),
         "status": WorkflowStatus.REVIEWING,
@@ -93,9 +92,9 @@ def test_sentinel_tracks_successful_steps() -> None:
         "requires_human_approval": False,
         "retry_count": 0,
     }
-    
+
     feedback = sentinel.review(state)
-    
+
     assert feedback.approved
     assert not feedback.requires_human
     assert feedback.review_notes is None or len(feedback.review_notes.successful_steps) >= 3
@@ -104,7 +103,7 @@ def test_sentinel_tracks_successful_steps() -> None:
 def test_sentinel_identifies_policy_constraint() -> None:
     """Test that sentinel properly categorizes policy constraints."""
     sentinel = get_agent_sentinel()
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="sensitive_action", channel="demo"),
         "status": WorkflowStatus.POLICY_CHECK,
@@ -119,9 +118,9 @@ def test_sentinel_identifies_policy_constraint() -> None:
         "requires_human_approval": True,
         "retry_count": 0,
     }
-    
+
     feedback = sentinel.review(state)
-    
+
     assert not feedback.approved
     assert feedback.requires_human
     policy_issues = [i for i in feedback.detailed_issues if i.category == ReviewIssueCategory.POLICY]
@@ -134,7 +133,7 @@ def test_review_agent_uses_detailed_feedback() -> None:
     """Test that review agent leverages detailed issue analysis."""
     review_agent = get_review_agent()
     sentinel = get_agent_sentinel()
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="test", channel="demo"),
         "status": WorkflowStatus.REVIEWING,
@@ -148,14 +147,14 @@ def test_review_agent_uses_detailed_feedback() -> None:
         "requires_human_approval": False,
         "retry_count": 0,
     }
-    
+
     # Get sentinel feedback
     feedback = sentinel.review(state)
     state["review_feedback"] = feedback
-    
+
     # Evaluate with review agent
     action, message = review_agent.evaluate(state)
-    
+
     # Should retry because issues are actionable
     from src.orchestration.models import ReviewAction
     assert action == ReviewAction.RETRY
@@ -165,9 +164,9 @@ def test_review_agent_uses_detailed_feedback() -> None:
 def test_review_agent_escalates_non_actionable_issues() -> None:
     """Test that review agent doesn't retry for critical non-actionable issues."""
     review_agent = get_review_agent()
-    
+
     from src.orchestration.models import ReviewFeedback, ReviewIssue, ReviewIssueCategory
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="test", channel="demo"),
         "status": WorkflowStatus.REVIEWING,
@@ -190,9 +189,9 @@ def test_review_agent_escalates_non_actionable_issues() -> None:
         "requires_human_approval": True,
         "retry_count": 0,
     }
-    
+
     action, message = review_agent.evaluate(state)
-    
+
     # Should complete (escalate) because issue is non-actionable
     from src.orchestration.models import ReviewAction
     assert action == ReviewAction.COMPLETE
@@ -202,7 +201,7 @@ def test_review_agent_escalates_non_actionable_issues() -> None:
 def test_sentinel_low_context_detection() -> None:
     """Test that sentinel detects insufficient context."""
     sentinel = get_agent_sentinel()
-    
+
     state: AgentState = {
         "request": OrchestrationRequest(intent="test", channel="demo"),
         "status": WorkflowStatus.FETCHING_CONTEXT,
@@ -212,9 +211,9 @@ def test_sentinel_low_context_detection() -> None:
         "requires_human_approval": False,
         "retry_count": 0,
     }
-    
+
     feedback = sentinel.review(state)
-    
+
     context_issues = [i for i in feedback.detailed_issues if i.category == ReviewIssueCategory.CONTEXT]
     assert len(context_issues) >= 1
     assert context_issues[0].severity == "low"
