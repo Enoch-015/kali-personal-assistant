@@ -38,7 +38,7 @@ function closeMobileNav() {
         <!-- Brand -->
         <NuxtLink to="/" class="flex items-center gap-2 shrink-0">
           <NuxtImg
-            src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
+            src="v1762635825/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11_igmqeu.png"
             alt="Kali-E Logo"
             width="40"
             height="40"

@@ -107,7 +107,7 @@ async function onSubmit(e: Event) {
       <div class="relative flex flex-col justify-center items-center w-full lg:w-1/2 px-2">
         <!-- Logo pinned to top-left -->
         <NuxtImg
-          src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
+          src="v1762635825/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11_igmqeu.png"
           alt="Kali-E Logo"
           width="48"
           height="48"
@@ -202,12 +202,13 @@ async function onSubmit(e: Event) {
       <!-- Right half -->
       <div class="hidden lg:flex lg:w-1/2">
         <NuxtImg
-          src="/img/Gemini_Generated_Image_t7306vt7306vt730.jpg"
-          alt="Hero Image"
+          provider="cloudinary"
+          src="/v1762635826/Gemini_Generated_Image_t7306vt7306vt730_p9w5hu.jpg"
           class="max-w-full h-full opacity-50"
           sizes="sm:100vw md:50vw lg:50vw"
-          loading="lazy"
-          decoding="async"
+          format="webp"
+          quality="80"
+          placeholder
         />
       </div>
     </main>

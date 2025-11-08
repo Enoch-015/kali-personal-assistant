@@ -1,8 +1,8 @@
 {
   // Add path aliases for Nuxt (@ and ~) so tools like shadcn-vue can resolve imports
   "compilerOptions": {
-    "baseUrl": ".",
     "composite": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
       "~/*": ["./*"]
