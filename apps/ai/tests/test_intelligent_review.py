@@ -1,4 +1,4 @@
-
+import asyncio
 from src.orchestration.models import (
     AgentState,
     Audience,
@@ -34,7 +34,7 @@ def test_sentinel_captures_plugin_failure_with_details() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     assert not feedback.approved
     assert feedback.requires_human
@@ -63,7 +63,7 @@ def test_sentinel_identifies_empty_plan() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     assert len(feedback.detailed_issues) >= 1
     planning_issues = [i for i in feedback.detailed_issues if i.category == ReviewIssueCategory.PLANNING]
@@ -93,7 +93,7 @@ def test_sentinel_tracks_successful_steps() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     assert feedback.approved
     assert not feedback.requires_human
@@ -119,7 +119,7 @@ def test_sentinel_identifies_policy_constraint() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     assert not feedback.approved
     assert feedback.requires_human
@@ -149,7 +149,7 @@ def test_review_agent_uses_detailed_feedback() -> None:
     }
 
     # Get sentinel feedback
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
     state["review_feedback"] = feedback
 
     # Evaluate with review agent
@@ -212,7 +212,7 @@ def test_sentinel_low_context_detection() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     context_issues = [i for i in feedback.detailed_issues if i.category == ReviewIssueCategory.CONTEXT]
     assert len(context_issues) >= 1

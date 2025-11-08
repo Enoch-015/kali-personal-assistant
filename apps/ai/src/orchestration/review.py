@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-
 from src.config.settings import get_settings
+from src.orchestration.reasoning import ReviewAssessment, get_reasoning_agent
 
 from .models import (
     AgentState,
@@ -15,10 +15,13 @@ from .models import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class AgentSentinel:
     """Performs intelligent governance checks before finalizing a workflow."""
 
-    def review(self, state: AgentState) -> ReviewFeedback:
+    async def review(self, state: AgentState) -> ReviewFeedback:
         """Intelligently review workflow state and categorize issues for routing agent."""
         notes: list[str] = []
         detailed_issues: list[ReviewIssue] = []
@@ -157,6 +160,64 @@ class AgentSentinel:
             high_severity_count = sum(1 for issue in detailed_issues if issue.severity in ["high", "critical"])
             if high_severity_count > 0:
                 summary = f"Workflow completed with {high_severity_count} critical issue(s)"
+
+        # Enrich review with LLM assessment when available
+        request = state.get("request")
+        llm_assessment: ReviewAssessment | None = None
+        if request is None:
+            logger.warning("Agent sentinel invoked without request context; skipping LLM assessment")
+        else:
+            try:
+                reasoner = get_reasoning_agent()
+                llm_assessment = await reasoner.assess_review(
+                    request,
+                    workflow=state.get("selected_workflow", "generic-task"),
+                    status=workflow_stage,
+                    planned_actions=state.get("planned_actions", []),
+                    analysis_summary=state.get("analysis_summary"),
+                    plugin_result=plugin_result,
+                    policy_decision=policy_decision,
+                    context_validation=context_validation,
+                    issues=notes + [issue.description for issue in detailed_issues],
+                    recommendations=recommendations,
+                )
+            except Exception:  # pragma: no cover - reasoning failures should not break review
+                logger.exception("LLM-based review assessment failed")
+                llm_assessment = None
+
+        if llm_assessment:
+            if llm_assessment.summary:
+                summary = llm_assessment.summary
+            if llm_assessment.requires_human:
+                requires_human = True
+                routing_context.setdefault("llm_requires_human", True)
+
+            def _dedupe_append(target: list[str], values: list[str]) -> None:
+                for value in values:
+                    if value and value not in target:
+                        target.append(value)
+
+            _dedupe_append(notes, llm_assessment.issues)
+            _dedupe_append(recommendations, llm_assessment.recommendations)
+
+            for issue_text in llm_assessment.issues:
+                if not issue_text:
+                    continue
+                if not any(existing.description == issue_text for existing in detailed_issues):
+                    detailed_issues.append(
+                        ReviewIssue(
+                            category=ReviewIssueCategory.OTHER,
+                            description=issue_text,
+                            severity="medium",
+                            context={"source": "llm"},
+                            actionable=True,
+                        )
+                    )
+
+        # Deduplicate collections for clean reporting
+        notes = list(dict.fromkeys(notes))
+        recommendations = list(dict.fromkeys(recommendations))
+        successful_steps = list(dict.fromkeys(successful_steps))
 
         # Build review notes for routing agent
         review_notes = ReviewNotes(

@@ -55,7 +55,7 @@ def demo_plugin_failure_detection() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     print(f"\n✓ Workflow Status: {state['status']}")
     print(f"✓ Plugin: {state['plugin_result'].plugin_name}")
@@ -167,7 +167,7 @@ def demo_multi_category_issues() -> None:
         "retry_count": 0,
     }
 
-    feedback = sentinel.review(state)
+    feedback = asyncio.run(sentinel.review(state))
 
     print(f"\n🔍 Multiple Issues Detected ({len(feedback.detailed_issues)}):")
 

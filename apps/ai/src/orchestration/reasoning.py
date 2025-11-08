@@ -3,11 +3,12 @@ from __future__ import annotations
 import inspect
 import logging
 import os
+import json
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Sequence
 
-from src.orchestration.models import OrchestrationRequest, PolicyDecision
+from src.orchestration.models import OrchestrationRequest, PolicyDecision, PluginDispatchResult
 from src.orchestration.plugins.base import registry as plugin_registry
 
 
@@ -27,6 +28,16 @@ class PluginDecision:
     plugin_name: str
     rationale: str
     confidence: float = 0.5
+
+
+@dataclass
+class ReviewAssessment:
+    """Represents the governance assessment produced by the reasoning agent."""
+
+    summary: str
+    requires_human: bool
+    issues: List[str] = field(default_factory=list)
+    recommendations: List[str] = field(default_factory=list)
 
 
 class OrchestrationReasoner:
@@ -208,6 +219,7 @@ class OrchestrationReasoner:
                 default_reason=f"{candidate}::{rationale}",
             )
         )
+
         if llm_choice:
             parsed = self._parse_plugin_response(llm_choice)
             if parsed is not None:
@@ -223,6 +235,97 @@ class OrchestrationReasoner:
                     )
 
         return PluginDecision(plugin_name=candidate, rationale=rationale, confidence=confidence)
+
+    async def assess_review(
+        self,
+        request: OrchestrationRequest,
+        *,
+        workflow: str,
+        status: str,
+        planned_actions: Sequence[Dict[str, Any]],
+        analysis_summary: Optional[str],
+        plugin_result: Optional[PluginDispatchResult],
+        policy_decision: Optional[PolicyDecision],
+        context_validation: Optional[Dict[str, Any]],
+        issues: Sequence[str],
+        recommendations: Sequence[str],
+    ) -> ReviewAssessment:
+        plan_summary = self._summarize_plan(planned_actions)
+        validation_summary = (context_validation or {}).get("summary") or "n/a"
+
+        plugin_snapshot = "None"
+        if plugin_result:
+            failures = len(plugin_result.failed)
+            plugin_snapshot = (
+                f"{plugin_result.plugin_name} dispatched={plugin_result.dispatched_count} failed={failures}"
+            )
+
+        policy_snapshot = "None"
+        if policy_decision is not None:
+            policy_snapshot = (
+                f"allowed={policy_decision.allowed} requires_human={policy_decision.requires_human}"
+                f" reason={policy_decision.reason}"
+            )
+
+        fallback_summary = (
+            f"Workflow '{workflow}' finished at stage '{status}'. Plan steps: "
+            f"{plan_summary or 'n/a'}. Plugin: {plugin_snapshot}."
+        )
+
+        issue_text = "; ".join(str(item) for item in issues if item) or "None"
+        recommendation_text = "; ".join(str(item) for item in recommendations if item) or "None"
+
+        prompt = (
+            "You are the governance sentinel overseeing an AI orchestration workflow.\n"
+            f"Intent: {request.intent}\n"
+            f"Channel: {request.channel}\n"
+            f"Workflow: {workflow}\n"
+            f"Final stage: {status}\n"
+            f"Plan summary: {plan_summary or 'n/a'}\n"
+            f"Analysis summary: {analysis_summary or 'n/a'}\n"
+            f"Plugin result: {plugin_snapshot}\n"
+            f"Policy decision: {policy_snapshot}\n"
+            f"Context validation: {validation_summary}\n"
+            f"Existing issues: {issue_text}\n"
+            f"Existing recommendations: {recommendation_text}\n"
+            "Respond with a JSON object containing keys 'summary' (string), 'requires_human' (boolean),\n"
+            "'issues' (array of concise issue descriptions), and 'recommendations' (array of actionable suggestions)."
+        )
+
+        llm_response = await self._call_llm_if_configured(prompt)
+        if not llm_response:
+            return ReviewAssessment(summary=fallback_summary, requires_human=False)
+
+        summary = fallback_summary
+        requires_human = False
+        issues_out: List[str] = []
+        recs_out: List[str] = []
+
+        try:
+            parsed = json.loads(llm_response)
+            if isinstance(parsed, dict):
+                summary = str(parsed.get("summary") or fallback_summary)
+                requires_human = bool(parsed.get("requires_human", False))
+                raw_issues = parsed.get("issues", [])
+                if isinstance(raw_issues, list):
+                    issues_out = [str(item).strip() for item in raw_issues if str(item).strip()]
+                raw_recs = parsed.get("recommendations", [])
+                if isinstance(raw_recs, list):
+                    recs_out = [str(item).strip() for item in raw_recs if str(item).strip()]
+            else:
+                summary = str(parsed)
+        except json.JSONDecodeError:
+            cleaned = llm_response.strip()
+            summary = cleaned or fallback_summary
+            requires_human = "requires" in cleaned.lower() or "human" in cleaned.lower()
+
+        return ReviewAssessment(
+            summary=summary,
+            requires_human=requires_human,
+            issues=issues_out,
+            recommendations=recs_out,
+        )
+
 
     async def _call_llm_if_configured(self, prompt: Optional[str]) -> Optional[str]:
         if not prompt or self._llm is None:
@@ -314,6 +417,11 @@ class OrchestrationReasoner:
             format_hint = "List plan steps succinctly."
         elif topic == "reflection":
             format_hint = "Provide a short summary highlighting key observations."
+        elif topic == "review":
+            format_hint = (
+                "Respond with JSON: {\"summary\": str, \"requires_human\": bool,"
+                " \"issues\": [str], \"recommendations\": [str]}"
+            )
 
         return (
             f"Topic: {topic}\n"

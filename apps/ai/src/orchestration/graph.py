@@ -309,9 +309,9 @@ async def execute_plugin(state: AgentState) -> dict[str, Any]:
     }
 
 
-def review_outcome(state: AgentState) -> dict[str, Any]:
+async def review_outcome(state: AgentState) -> dict[str, Any]:
     sentinel = get_agent_sentinel()
-    feedback: ReviewFeedback = sentinel.review(state)
+    feedback: ReviewFeedback = await sentinel.review(state)
     notes = list(state.get("working_notes") or [])
     notes.append("Sentinel review complete")
 
