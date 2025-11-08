@@ -47,6 +47,54 @@ def _review_route(state: AgentState) -> ReviewAction:
             return ReviewAction.COMPLETE
     return ReviewAction.COMPLETE
 
+async def interpret_request(state: AgentState) -> dict[str, Any]:
+    if state.get("request"):
+        return {}
+
+    raw_prompt = state.get("raw_prompt")
+    if not raw_prompt:
+        raise ValueError("Agent state missing 'request' or 'raw_prompt'")
+
+    reasoner = get_reasoning_agent()
+    hints = state.get("request_hints") or {}
+    interpretation = await reasoner.interpret_prompt(raw_prompt, hints=hints)
+
+    request_id_hint = state.get("request_id_hint")
+    request_obj = interpretation.request
+    if request_id_hint:
+        request_obj = request_obj.model_copy(update={"request_id": request_id_hint})
+        interpretation.request = request_obj
+
+    notes = list(state.get("working_notes") or [])
+    if interpretation.rationale:
+        notes.append(interpretation.rationale)
+
+    interpretation_notes = list(state.get("interpretation_notes") or [])
+    if interpretation.rationale:
+        interpretation_notes.append(interpretation.rationale)
+
+    event = AgentEvent(
+        type="intake.interpretation",
+        message="Interpreted natural language prompt",
+        data={
+            "used_llm": interpretation.used_llm,
+            "raw_prompt_preview": raw_prompt[:200],
+        },
+    )
+
+    updates: dict[str, Any] = {
+        "status": WorkflowStatus.INTERPRETING,
+        "request": request_obj,
+        "working_notes": notes,
+        "interpretation_notes": interpretation_notes,
+        "events": _with_event(state, event),
+    }
+
+    if interpretation.raw_response:
+        event.data["llm_response_preview"] = interpretation.raw_response[:200]
+
+    return updates
+
 
 async def route_request(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
@@ -120,11 +168,16 @@ async def policy_check(state: AgentState) -> dict[str, Any]:
     captured_directives = feedback_agent.capture(request)
     policy_engine = get_policy_engine()
     decision: PolicyDecision = policy_engine.evaluate(request)
+    reasoner = get_reasoning_agent()
     notes = list(state.get("working_notes") or [])
     note = f"Policy decision: {decision.reason}"
     notes.append(note)
     if captured_directives:
         notes.append(f"Captured {len(captured_directives)} policy directive(s)")
+
+    policy_analysis = await reasoner.assess_policy(request, decision)
+    if policy_analysis:
+        notes.append(f"Policy analysis: {policy_analysis}")
 
     event = AgentEvent(
         type="policy.review",
@@ -136,6 +189,7 @@ async def policy_check(state: AgentState) -> dict[str, Any]:
             "captured_directives": [directive.to_record() for directive in captured_directives]
             if captured_directives
             else [],
+            "llm_analysis": policy_analysis,
         },
     )
     if not decision.allowed:
@@ -267,8 +321,9 @@ async def select_plugin(state: AgentState) -> dict[str, Any]:
     }
 
 
-def render_payload(state: AgentState) -> dict[str, Any]:
+async def render_payload(state: AgentState) -> dict[str, Any]:
     request = _require_request(state)
+    reasoner = get_reasoning_agent()
     payload = request.payload or {}
     template = payload.get("template") or "[demo] {intent}"
     variables = {"intent": request.intent, **payload.get("variables", {})}
@@ -277,13 +332,22 @@ def render_payload(state: AgentState) -> dict[str, Any]:
     except KeyError:
         rendered = f"{template} | vars={variables}"
 
+    plan = state.get("planned_actions", [])
+    context = state.get("retrieved_context") or {}
+    rendered_message = await reasoner.generate_payload(
+        request,
+        plan=plan,
+        context=context,
+        fallback=rendered,
+    )
+
     event = AgentEvent(
         type="message.rendered",
         message="Rendered payload for plugin dispatch",
-        data={"char_count": len(rendered)},
+        data={"char_count": len(rendered_message)},
     )
     return {
-        "rendered_message": rendered,
+        "rendered_message": rendered_message,
         "events": _with_event(state, event),
     }
 
@@ -426,6 +490,7 @@ def _plugin_route(state: AgentState) -> str:
 
 def build_langgraph(checkpointer: InMemorySaver | None = None) -> Any:
     builder = StateGraph(AgentState)
+    builder.add_node("interpret_request", interpret_request)
     builder.add_node("route_request", route_request)
     builder.add_node("policy_check", policy_check)
     builder.add_node("fetch_context", fetch_context)
@@ -439,7 +504,8 @@ def build_langgraph(checkpointer: InMemorySaver | None = None) -> Any:
     builder.add_node("update_memory", update_memory)
     builder.add_node("finalize", finalize)
 
-    builder.add_edge(START, "route_request")
+    builder.add_edge(START, "interpret_request")
+    builder.add_edge("interpret_request", "route_request")
     builder.add_edge("route_request", "policy_check")
     builder.add_edge("policy_check", "fetch_context")
     builder.add_edge("fetch_context", "plan_actions")

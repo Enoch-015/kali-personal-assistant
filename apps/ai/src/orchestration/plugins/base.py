@@ -44,5 +44,8 @@ class PluginRegistry:
     def all(self) -> Iterable[BasePlugin]:
         return self._plugins.values()
 
+    def names(self) -> Iterable[str]:
+        return self._plugins.keys()
+
 
 registry = PluginRegistry()

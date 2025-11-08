@@ -407,11 +407,14 @@ class Settings(BaseSettings):
         if mongo_env_overrides:
             self.mongo = self.mongo.model_copy(update=mongo_env_overrides)
 
-        if self.environment == "production":
-            candidate = self.redis_url_override or self.redis.url
-            self.redis = self.redis.model_copy(update={"url": candidate})
-        else:
-            self.redis = self.redis.model_copy(update={"url": _default_redis_url()})
+        redis_update: dict[str, Any] | None = None
+        if self.redis_url_override:
+            redis_update = {"url": self.redis_url_override}
+        elif self.environment == "production":
+            redis_update = {"url": self.redis.url}
+
+        if redis_update:
+            self.redis = self.redis.model_copy(update=redis_update)
 
         graphiti_update = {}
         if self.graphiti.has_credentials and not self.graphiti.enabled:

@@ -301,6 +301,12 @@ class ReviewAgent:
                     self._logger.warning(message)
                     return ReviewAction.COMPLETE, message
 
+        if feedback.requires_human:
+            reason = feedback.summary or "Human approval required"
+            message = f"Review agent escalating: {reason}"
+            self._logger.info(message)
+            return ReviewAction.COMPLETE, message
+
         if not feedback.approved:
             issues = ", ".join(feedback.issues) if feedback.issues else "undisclosed issues"
 

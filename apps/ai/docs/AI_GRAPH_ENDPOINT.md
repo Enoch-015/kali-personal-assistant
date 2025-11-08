@@ -2,37 +2,37 @@
 
 ## Overview
 
-The `/ai/graph/invoke` endpoint provides direct access to the Kali Personal Assistant's AI background worker, which is powered by LangGraph. This endpoint allows external requests to trigger the orchestration graph that processes user intents through a multi-stage AI pipeline.
+The `/ai/graph/invoke` endpoint provides direct access to the Kali Personal Assistant's AI background worker, which is powered by LangGraph. Send natural language instructions such as “Can you help me send…” and the graph will translate them—via an LLM-powered intake stage—into structured orchestration requests that flow through the multi-stage AI pipeline.
 
 ## Endpoint Details
 
 ### POST `/ai/graph/invoke`
 
-Invokes the AI background worker graph to process an orchestration request.
+Invokes the AI background worker graph to process a natural language request.
 
 **Query Parameters:**
 - `mode` (optional): Execution mode
   - `sync` (default): Blocks until the graph completes and returns the full state
   - `async`: Enqueues the request and returns immediately with a run_id
 
-**Request Body:** `OrchestrationRequest` object
+**Request Body:** Natural language payload
 
 ```typescript
 {
-  request_id?: string;        // Auto-generated UUID if not provided
-  intent: string;             // Required: High-level user intent
-  channel?: string;           // Default: "demo" - Target channel (email, whatsapp, etc.)
-  audience?: {                // Optional: Target recipients
-    recipients: string[];     // List of recipient IDs/addresses
-    segment_id?: string;      // Optional: Saved segment identifier
-  };
-  payload?: {                 // Optional: Request payload
-    template?: string;        // Message template with variables
-    variables?: object;       // Variables to fill in template
-    [key: string]: any;       // Additional custom fields
-  };
-  metadata?: {                // Optional: Additional metadata
-    [key: string]: any;
+  request_id?: string; // Auto-generated UUID if not provided
+  prompt: string;      // Required natural language instruction ("Can you help me...")
+  hints?: {
+    channel?: string;  // Optional channel preference (email, whatsapp, etc.)
+    audience?: {
+      recipients?: string[];
+      segment_id?: string;
+    };
+    payload?: {
+      template?: string;
+      variables?: Record<string, any>;
+      [key: string]: any;
+    };
+    metadata?: Record<string, any>;
   };
 }
 ```
@@ -41,14 +41,17 @@ Invokes the AI background worker graph to process an orchestration request.
 
 When you invoke the endpoint, your request flows through these stages:
 
-1. **Routing**: Determines the appropriate workflow based on the intent
-2. **Policy Check**: Validates the request against configured policies
-3. **Context Fetching**: Retrieves relevant context from memory services (Graphiti)
-4. **Planning**: Generates an action plan for fulfilling the intent
-5. **Reflection**: Analyzes and validates the plan
-6. **Plugin Selection & Dispatch**: Chooses and executes the appropriate plugin
-7. **Review**: Validates the outcome and determines if retry is needed
-8. **Memory Update**: Persists learned information to the knowledge graph
+1. **Interpretation (LLM)**: Converts the raw prompt into a structured orchestration request
+2. **Routing (LLM-guided)**: Determines the appropriate workflow based on interpreted intent and prior feedback
+3. **Policy Check (LLM commentary)**: Runs policy rules and captures governance analysis from the LLM
+4. **Context Fetching**: Retrieves relevant context from memory services (Graphiti)
+5. **Planning (LLM-guided)**: Generates an action plan for fulfilling the intent
+6. **Reflection (LLM)**: Reviews the plan and highlights risks or gaps
+7. **Plugin Selection (LLM-guided)**: Chooses the best plugin to execute the plan
+8. **Payload Composition (LLM)**: Drafts the outbound message or action payload
+9. **Plugin Dispatch**: Executes the planned action with the selected plugin
+10. **Review (LLM sentinel)**: Validates the outcome and determines if retry is needed
+11. **Memory Update**: Persists learned information to the knowledge graph
 
 ## Example Usage
 
@@ -59,21 +62,23 @@ When you invoke the endpoint, your request flows through these stages:
 curl -X POST "http://localhost:8000/ai/graph/invoke?mode=async" \
   -H "Content-Type: application/json" \
   -d '{
-    "intent": "send_status_update",
-    "channel": "email",
-    "audience": {
-      "recipients": ["user@example.com", "admin@example.com"]
-    },
-    "payload": {
-      "template": "Hello {name}, your status is: {status}",
-      "variables": {
-        "name": "John Doe",
-        "status": "Active"
+    "prompt": "Send a status update email to user@example.com and admin@example.com with the current account status.",
+    "hints": {
+      "channel": "email",
+      "audience": {
+        "recipients": ["user@example.com", "admin@example.com"]
+      },
+      "payload": {
+        "template": "Hello {name}, your status is: {status}",
+        "variables": {
+          "name": "John Doe",
+          "status": "Active"
+        }
+      },
+      "metadata": {
+        "user_id": "12345",
+        "priority": "normal"
       }
-    },
-    "metadata": {
-      "user_id": "12345",
-      "priority": "normal"
     }
   }'
 ```
@@ -103,15 +108,17 @@ curl "http://localhost:8000/orchestration/runs/a1b2c3d4-e5f6-7890-abcd-ef1234567
 curl -X POST "http://localhost:8000/ai/graph/invoke?mode=sync" \
   -H "Content-Type: application/json" \
   -d '{
-    "intent": "send_broadcast",
-    "channel": "whatsapp",
-    "audience": {
-      "recipients": ["+15550001111", "+15550002222"]
-    },
-    "payload": {
-      "template": "Broadcast: {message}",
-      "variables": {
-        "message": "System maintenance scheduled for tonight"
+    "prompt": "Broadcast tonight\'s maintenance notice to +15550001111 and +15550002222 on WhatsApp.",
+    "hints": {
+      "channel": "whatsapp",
+      "audience": {
+        "recipients": ["+15550001111", "+15550002222"]
+      },
+      "payload": {
+        "template": "Broadcast: {message}",
+        "variables": {
+          "message": "System maintenance scheduled for tonight"
+        }
       }
     }
   }'
@@ -172,7 +179,7 @@ curl -X POST "http://localhost:8000/ai/graph/invoke?mode=sync" \
 curl -X POST "http://localhost:8000/ai/graph/invoke" \
   -H "Content-Type: application/json" \
   -d '{
-    "intent": "process_generic_task"
+    "prompt": "Process this generic task for me."
   }'
 ```
 
@@ -193,47 +200,39 @@ import asyncio
 from typing import Dict, Any
 
 async def invoke_ai_graph(
-    intent: str,
-    mode: str = "sync",
-    channel: str = "demo",
-    audience: Dict[str, Any] | None = None,
-    payload: Dict[str, Any] | None = None,
-    metadata: Dict[str, Any] | None = None,
+  prompt: str,
+  mode: str = "sync",
+  hints: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    """Invoke the AI graph endpoint."""
-    async with httpx.AsyncClient() as client:
-        request_data = {
-            "intent": intent,
-            "channel": channel,
-        }
-        if audience:
-            request_data["audience"] = audience
-        if payload:
-            request_data["payload"] = payload
-        if metadata:
-            request_data["metadata"] = metadata
+  """Invoke the AI graph endpoint with a natural language prompt."""
+  async with httpx.AsyncClient() as client:
+    request_data = {"prompt": prompt}
+    if hints:
+      request_data["hints"] = hints
 
-        response = await client.post(
-            f"http://localhost:8000/ai/graph/invoke?mode={mode}",
-            json=request_data,
-        )
-        response.raise_for_status()
-        return response.json()
+    response = await client.post(
+      f"http://localhost:8000/ai/graph/invoke?mode={mode}",
+      json=request_data,
+    )
+    response.raise_for_status()
+    return response.json()
 
 # Usage
 async def main():
-    result = await invoke_ai_graph(
-        intent="send_notification",
-        mode="sync",
-        channel="email",
-        audience={"recipients": ["user@example.com"]},
-        payload={
-            "template": "Hello {name}!",
-            "variables": {"name": "World"}
-        }
-    )
-    print(f"Status: {result['status']}")
-    print(f"Run ID: {result['run_id']}")
+  result = await invoke_ai_graph(
+    prompt="Email user@example.com with a friendly hello message.",
+    mode="sync",
+    hints={
+      "channel": "email",
+      "audience": {"recipients": ["user@example.com"]},
+      "payload": {
+        "template": "Hello {name}!",
+        "variables": {"name": "World"}
+      }
+    },
+  )
+  print(f"Status: {result['status']}")
+  print(f"Run ID: {result['run_id']}")
 
 asyncio.run(main())
 ```
@@ -241,21 +240,6 @@ asyncio.run(main())
 ## JavaScript/TypeScript Client Example
 
 ```typescript
-interface OrchestrationRequest {
-  intent: string;
-  channel?: string;
-  audience?: {
-    recipients: string[];
-    segment_id?: string;
-  };
-  payload?: {
-    template?: string;
-    variables?: Record<string, any>;
-    [key: string]: any;
-  };
-  metadata?: Record<string, any>;
-}
-
 interface AIGraphResponse {
   run_id: string;
   status: string;
@@ -263,8 +247,21 @@ interface AIGraphResponse {
   metadata?: Record<string, any>;
 }
 
+interface GraphInvocationRequest {
+  prompt: string;
+  hints?: {
+    channel?: string;
+    audience?: {
+      recipients?: string[];
+      segment_id?: string;
+    };
+    payload?: Record<string, any>;
+    metadata?: Record<string, any>;
+  };
+}
+
 async function invokeAIGraph(
-  request: OrchestrationRequest,
+  request: GraphInvocationRequest,
   mode: 'sync' | 'async' = 'sync'
 ): Promise<AIGraphResponse> {
   const response = await fetch(
@@ -287,14 +284,16 @@ async function invokeAIGraph(
 
 // Usage
 const result = await invokeAIGraph({
-  intent: 'send_reminder',
-  channel: 'email',
-  audience: {
-    recipients: ['user@example.com']
-  },
-  payload: {
-    template: 'Reminder: {task}',
-    variables: { task: 'Complete your profile' }
+  prompt: 'Send a reminder email to user@example.com about completing their profile.',
+  hints: {
+    channel: 'email',
+    audience: {
+      recipients: ['user@example.com']
+    },
+    payload: {
+      template: 'Reminder: {task}',
+      variables: { task: 'Complete your profile' }
+    }
   }
 }, 'async');
 
@@ -305,14 +304,14 @@ console.log('Status:', result.status);
 ## Error Handling
 
 ### 422 Validation Error
-**Cause:** Invalid request body (e.g., missing required `intent` field)
+**Cause:** Invalid request body (e.g., missing required `prompt` field)
 
 **Example:**
 ```json
 {
   "detail": [
     {
-      "loc": ["body", "intent"],
+  "loc": ["body", "prompt"],
       "msg": "field required",
       "type": "value_error.missing"
     }
@@ -344,13 +343,15 @@ console.log('Status:', result.status);
 
 1. **Use Async Mode for Long-Running Tasks**: If the workflow might take significant time, use async mode and poll the status endpoint.
 
-2. **Include Metadata**: Add relevant metadata like user_id, session_id, etc., for better tracking and debugging.
+2. **Provide Helpful Hints**: Supply audience, channel, payload, or metadata hints when you have them—the LLM will merge hints with its interpretation.
 
-3. **Handle Retries**: The graph includes intelligent retry logic, but you should still implement client-side retry for network errors.
+3. **Include Metadata**: Add identifiers like `user_id` or `session_id` for observability; the endpoint automatically adds `source: "ai_graph_invoke"`.
 
-4. **Monitor Status**: When using async mode, poll the `/orchestration/runs/{run_id}` endpoint to track progress.
+4. **Handle Retries**: The orchestrator includes intelligent retry logic, but you should still implement client-side retry for network errors.
 
-5. **Review State**: In sync mode, check the `review_feedback` in the response to ensure the workflow was approved.
+5. **Monitor Status**: When using async mode, poll the `/orchestration/runs/{run_id}` endpoint to track progress.
+
+6. **Review State**: In sync mode, inspect the returned `review_feedback` and interpretation notes to understand how the LLM framed your request.
 
 ## Integration with Other Endpoints
 
@@ -391,8 +392,7 @@ These interfaces allow you to:
 
 ## Logging
 
-The endpoint logs key events:
-- Request received with intent and request_id
+- Request received with prompt and request_id
 - Execution mode (sync/async)
 - Completion status
 - Errors with stack traces

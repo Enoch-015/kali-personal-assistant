@@ -10,6 +10,16 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from src.orchestration.models import OrchestrationRequest, PolicyDecision, PluginDispatchResult
 from src.orchestration.plugins.base import registry as plugin_registry
+from pydantic import ValidationError
+
+PROMPT_DEFINITIONS = (
+    "Definitions:\n"
+    "- Intent: short description of the user's goal that the workflow should satisfy.\n"
+    "- Channel: delivery medium or plugin category that will execute the task (e.g. email, whatsapp).\n"
+    "- Audience: recipients or target segment that should receive the outcome.\n"
+    "- Payload: structured content or template data that is sent to the plugin.\n"
+    "- Metadata: supporting key/value context such as user_id or priority.\n"
+)
 
 
 @dataclass
@@ -28,6 +38,16 @@ class PluginDecision:
     plugin_name: str
     rationale: str
     confidence: float = 0.5
+
+
+@dataclass
+class RequestInterpretation:
+    """Represents the interpreted orchestration request extracted from natural language."""
+
+    request: OrchestrationRequest
+    rationale: str
+    used_llm: bool = False
+    raw_response: Optional[str] = None
 
 
 @dataclass
@@ -50,6 +70,89 @@ class OrchestrationReasoner:
 
     def __init__(self, llm: Optional[Any] = None) -> None:
         self._llm = llm
+
+    async def interpret_prompt(
+        self,
+        prompt: str,
+        *,
+        hints: Optional[Dict[str, Any]] = None,
+    ) -> RequestInterpretation:
+        """Interpret a natural language prompt into an orchestration request."""
+
+        hints = hints or {}
+        normalized = (prompt or "").strip()
+        fallback_intent = normalized or "general_assistance"
+
+        base_data: Dict[str, Any] = {
+            "intent": fallback_intent,
+            "channel": str(hints.get("channel") or "demo").strip() or "demo",
+            "payload": hints.get("payload") or {},
+            "metadata": dict(hints.get("metadata") or {}),
+        }
+
+        audience_hint = hints.get("audience")
+        if audience_hint:
+            base_data["audience"] = audience_hint
+
+        try:
+            base_request = OrchestrationRequest.model_validate(base_data)
+        except ValidationError:
+            base_data.pop("audience", None)
+            base_request = OrchestrationRequest.model_validate(base_data)
+
+        hints_json = json.dumps(hints, ensure_ascii=False) if hints else "{}"
+        llm_prompt = (
+            "You are an orchestration intake specialist responsible for translating natural language into"
+            " the structured OrchestrationRequest format.\n"
+            f"{PROMPT_DEFINITIONS}"
+            "Return a JSON object with keys: intent (string), channel (string), audience (object with optional\n"
+            "  \"recipients\" array), payload (object), metadata (object), and rationale (string summarizing your interpretation).\n"
+            "Ensure recipients are valid addresses or identifiers when applicable and preserve helpful details from the prompt.\n"
+            f"Raw prompt: {normalized or prompt}\n"
+            f"Hints (optional structured guidance): {hints_json}"
+        )
+
+        rationale = "Default interpretation applied"
+        used_llm = False
+        raw_response: Optional[str] = None
+        llm_response = await self._call_llm_if_configured(llm_prompt)
+        if llm_response:
+            raw_response = llm_response
+            try:
+                parsed = json.loads(llm_response)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                candidate_data: Dict[str, Any] = {
+                    "intent": str(parsed.get("intent") or base_request.intent).strip() or base_request.intent,
+                    "channel": str(parsed.get("channel") or base_request.channel).strip() or base_request.channel,
+                    "payload": parsed.get("payload") or base_request.payload,
+                    "metadata": {
+                        **base_request.metadata,
+                        **((parsed.get("metadata") or {}) if isinstance(parsed.get("metadata"), dict) else {}),
+                    },
+                }
+                audience_candidate = parsed.get("audience")
+                if audience_candidate:
+                    candidate_data["audience"] = audience_candidate
+                try:
+                    interpreted_request = OrchestrationRequest.model_validate(candidate_data)
+                except ValidationError:
+                    candidate_data.pop("audience", None)
+                    interpreted_request = OrchestrationRequest.model_validate(candidate_data)
+                base_request = interpreted_request
+                rationale = str(parsed.get("rationale") or "LLM interpretation applied")
+                used_llm = True
+            else:
+                rationale = llm_response.strip() or rationale
+                used_llm = True
+
+        return RequestInterpretation(
+            request=base_request,
+            rationale=rationale,
+            used_llm=used_llm,
+            raw_response=raw_response,
+        )
 
     async def decide_workflow(
         self,
@@ -186,6 +289,31 @@ class OrchestrationReasoner:
         )
         return llm_summary or fallback
 
+    async def assess_policy(
+        self,
+        request: OrchestrationRequest,
+        decision: PolicyDecision,
+    ) -> Optional[str]:
+        """Provide an LLM-backed assessment of the policy decision."""
+
+        summary = (
+            f"Policy decision: allowed={decision.allowed}, requires_human={decision.requires_human},"
+            f" reason={decision.reason or 'n/a'}"
+        )
+        prompt = (
+            "You are the governance analyst reviewing a policy decision for an orchestration request.\n"
+            f"{PROMPT_DEFINITIONS}"
+            f"Intent: {request.intent}\n"
+            f"Channel: {request.channel}\n"
+            f"Policy allowed: {decision.allowed}\n"
+            f"Requires human: {decision.requires_human}\n"
+            f"Policy rationale: {decision.reason}\n"
+            f"Policy tags: {', '.join(decision.tags) if decision.tags else 'none'}\n"
+            "Respond with a concise analysis highlighting potential risks or actions."
+        )
+        analysis = await self._call_llm_if_configured(prompt)
+        return analysis or summary
+
     async def choose_plugin(
         self,
         request: OrchestrationRequest,
@@ -211,12 +339,19 @@ class OrchestrationReasoner:
                 rationale = f"Selected plugin based on channel '{request.channel or 'demo'}'"
                 confidence = 0.7
 
+        available_plugins = ", ".join(sorted(plugin_registry.names())) or "demo-messaging"
+        plugin_context = (
+            "Available plugins you may choose from: "
+            f"{available_plugins}. Only select one of these registered plugin names."
+        )
+
         llm_choice = await self._call_llm_if_configured(
             self._format_prompt(
                 "plugin",
                 request,
                 plan_summary=self._summarize_plan(plan),
                 default_reason=f"{candidate}::{rationale}",
+                extra_context=plugin_context,
             )
         )
 
@@ -235,6 +370,31 @@ class OrchestrationReasoner:
                     )
 
         return PluginDecision(plugin_name=candidate, rationale=rationale, confidence=confidence)
+
+    async def generate_payload(
+        self,
+        request: OrchestrationRequest,
+        *,
+        plan: Sequence[Dict[str, Any]],
+        context: Optional[Dict[str, Any]] = None,
+        fallback: str,
+    ) -> str:
+        """Draft a payload message using the LLM when available."""
+
+        prompt = (
+            "You are a communications specialist tasked with drafting the final message for an orchestration workflow.\n"
+            f"{PROMPT_DEFINITIONS}"
+            f"Intent (user goal): {request.intent}\n"
+            f"Channel (delivery medium): {request.channel}\n"
+            f"Plan summary: {self._summarize_plan(plan) or 'none'}\n"
+            f"Provided payload template: {json.dumps(request.payload or {}, ensure_ascii=False)}\n"
+            f"Context summary: {self._summarize_context(context)}\n"
+            "Compose the exact message to send. Keep it concise, actionable, and aligned with the intent."
+        )
+        llm_message = await self._call_llm_if_configured(prompt)
+        if llm_message:
+            return llm_message
+        return fallback
 
     async def assess_review(
         self,
@@ -277,6 +437,7 @@ class OrchestrationReasoner:
 
         prompt = (
             "You are the governance sentinel overseeing an AI orchestration workflow.\n"
+            f"{PROMPT_DEFINITIONS}"
             f"Intent: {request.intent}\n"
             f"Channel: {request.channel}\n"
             f"Workflow: {workflow}\n"
@@ -405,6 +566,7 @@ class OrchestrationReasoner:
         context_summary: str = "",
         plan_summary: str = "",
         default_reason: str,
+        extra_context: str = "",
     ) -> str:
         format_hint = "Respond with a concise rationale."
         if topic == "plugin":
@@ -422,16 +584,31 @@ class OrchestrationReasoner:
                 "Respond with JSON: {\"summary\": str, \"requires_human\": bool,"
                 " \"issues\": [str], \"recommendations\": [str]}"
             )
+        elif topic == "interpretation":
+            format_hint = (
+                "Respond with JSON {\"intent\": str, \"channel\": str, \"audience\": object,"
+                " \"payload\": object, \"metadata\": object, \"rationale\": str}"
+            )
+        elif topic == "payload":
+            format_hint = "Respond with the final message text."
+        elif topic == "policy":
+            format_hint = "Provide a risk-focused analysis and recommendations."
 
-        return (
+        prompt = (
             f"Topic: {topic}\n"
             f"Intent: {request.intent}\n"
             f"Channel: {request.channel}\n"
             f"Context: {context_summary or 'none'}\n"
             f"Plan: {plan_summary or 'n/a'}\n"
             f"{format_hint}\n"
+            f"{PROMPT_DEFINITIONS}"
             f"Default: {default_reason}"
         )
+
+        if extra_context:
+            prompt = f"{prompt}\nAdditional context: {extra_context}"
+
+        return prompt
 
 
 _REASONING_LLM: Optional[Any] = None

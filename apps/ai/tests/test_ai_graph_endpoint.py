@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from src.main import app
 from src.orchestration.models import (
+    NaturalLanguageGraphRequest,
     OrchestrationRequest,
     PluginDispatchResult,
     PolicyDecision,
@@ -36,18 +37,31 @@ def test_invoke_ai_graph_sync_mode(test_client: TestClient, mock_orchestrator: M
     """Test AI graph invocation in synchronous mode."""
     # Prepare test data
     request_data = {
-        "intent": "send_status_update",
-        "channel": "email",
-        "audience": {"recipients": ["user@example.com"]},
-        "payload": {
-            "template": "Hello {name}!",
-            "variables": {"name": "Test User"},
+        "prompt": "Please send a status update email to user@example.com.",
+        "hints": {
+            "channel": "email",
+            "audience": {"recipients": ["user@example.com"]},
+            "payload": {
+                "template": "Hello {name}!",
+                "variables": {"name": "Test User"},
+            },
         },
     }
 
     # Mock the orchestrator response
+    structured_request = OrchestrationRequest(
+        intent="send_status_update",
+        channel="email",
+        audience={"recipients": ["user@example.com"]},
+        payload={
+            "template": "Hello {name}!",
+            "variables": {"name": "Test User"},
+        },
+        metadata={"source": "ai_graph_invoke"},
+    )
+
     mock_state = {
-        "request": OrchestrationRequest(**request_data),
+        "request": structured_request,
         "status": WorkflowStatus.COMPLETED,
         "selected_workflow": "broadcast",
         "policy_decision": PolicyDecision(allowed=True),
@@ -80,21 +94,25 @@ def test_invoke_ai_graph_sync_mode(test_client: TestClient, mock_orchestrator: M
     # Verify the orchestrator was called
     mock_orchestrator.run.assert_called_once()
     call_args = mock_orchestrator.run.call_args[0][0]
-    assert call_args.intent == "send_status_update"
-    assert call_args.channel == "email"
-    assert call_args.metadata.get("source") == "ai_graph_invoke"
+    assert isinstance(call_args, NaturalLanguageGraphRequest)
+    assert call_args.prompt == request_data["prompt"]
+    assert call_args.hints is not None
+    assert call_args.hints.channel == "email"
+    assert call_args.hints.metadata.get("source") == "ai_graph_invoke"
 
 
 def test_invoke_ai_graph_async_mode(test_client: TestClient, mock_orchestrator: MagicMock) -> None:
     """Test AI graph invocation in asynchronous mode."""
     # Prepare test data
     request_data = {
-        "intent": "send_broadcast",
-        "channel": "whatsapp",
-        "audience": {"recipients": ["+15550001111", "+15550002222"]},
-        "payload": {
-            "template": "Broadcast message: {message}",
-            "variables": {"message": "Test"},
+        "prompt": "Broadcast this update to +15550001111 and +15550002222 on WhatsApp.",
+        "hints": {
+            "channel": "whatsapp",
+            "audience": {"recipients": ["+15550001111", "+15550002222"]},
+            "payload": {
+                "template": "Broadcast message: {message}",
+                "variables": {"message": "Test"},
+            },
         },
     }
 
@@ -116,8 +134,8 @@ def test_invoke_ai_graph_async_mode(test_client: TestClient, mock_orchestrator: 
     # Verify the orchestrator was called
     mock_orchestrator.enqueue.assert_called_once()
     call_args = mock_orchestrator.enqueue.call_args[0][0]
-    assert call_args.intent == "send_broadcast"
-    assert call_args.channel == "whatsapp"
+    assert isinstance(call_args, NaturalLanguageGraphRequest)
+    assert call_args.hints and call_args.hints.channel == "whatsapp"
 
 
 def test_invoke_ai_graph_default_mode_is_sync(
@@ -125,12 +143,18 @@ def test_invoke_ai_graph_default_mode_is_sync(
 ) -> None:
     """Test that the default mode for /ai/graph/invoke is sync."""
     request_data = {
-        "intent": "test_intent",
-        "channel": "demo",
+        "prompt": "Plan a generic demo task for me.",
+        "hints": {"channel": "demo"},
     }
 
+    structured_request = OrchestrationRequest(
+        intent="test_intent",
+        channel="demo",
+        metadata={"source": "ai_graph_invoke"},
+    )
+
     mock_state = {
-        "request": OrchestrationRequest(**request_data),
+        "request": structured_request,
         "status": WorkflowStatus.COMPLETED,
         "events": [],
         "working_notes": [],
@@ -145,6 +169,10 @@ def test_invoke_ai_graph_default_mode_is_sync(
     data = response.json()
     assert "state" in data
     mock_orchestrator.run.assert_called_once()
+    call_args = mock_orchestrator.run.call_args[0][0]
+    assert isinstance(call_args, NaturalLanguageGraphRequest)
+    assert call_args.hints is not None
+    assert call_args.hints.metadata["source"] == "ai_graph_invoke"
 
 
 def test_invoke_ai_graph_with_minimal_request(
@@ -152,11 +180,16 @@ def test_invoke_ai_graph_with_minimal_request(
 ) -> None:
     """Test AI graph invocation with minimal required fields."""
     request_data = {
-        "intent": "minimal_task",
+        "prompt": "Handle this minimal task for me.",
     }
 
+    structured_request = OrchestrationRequest(
+        intent="minimal_task",
+        metadata={"source": "ai_graph_invoke"},
+    )
+
     mock_state = {
-        "request": OrchestrationRequest(**request_data),
+        "request": structured_request,
         "status": WorkflowStatus.COMPLETED,
         "events": [],
         "working_notes": [],
@@ -168,6 +201,10 @@ def test_invoke_ai_graph_with_minimal_request(
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "completed"
+    call_args = mock_orchestrator.run.call_args[0][0]
+    assert isinstance(call_args, NaturalLanguageGraphRequest)
+    assert call_args.hints is not None
+    assert call_args.hints.metadata["source"] == "ai_graph_invoke"
 
 
 def test_invoke_ai_graph_with_metadata(
@@ -175,10 +212,12 @@ def test_invoke_ai_graph_with_metadata(
 ) -> None:
     """Test that custom metadata is preserved and source is added."""
     request_data = {
-        "intent": "test_with_metadata",
-        "metadata": {
-            "user_id": "12345",
-            "session_id": "abcde",
+        "prompt": "Ping user 12345 with session abcde.",
+        "hints": {
+            "metadata": {
+                "user_id": "12345",
+                "session_id": "abcde",
+            }
         },
     }
 
@@ -191,9 +230,10 @@ def test_invoke_ai_graph_with_metadata(
 
     # Verify metadata is preserved and source is added
     call_args = mock_orchestrator.enqueue.call_args[0][0]
-    assert call_args.metadata["user_id"] == "12345"
-    assert call_args.metadata["session_id"] == "abcde"
-    assert call_args.metadata["source"] == "ai_graph_invoke"
+    assert call_args.hints is not None
+    assert call_args.hints.metadata["user_id"] == "12345"
+    assert call_args.hints.metadata["session_id"] == "abcde"
+    assert call_args.hints.metadata["source"] == "ai_graph_invoke"
 
 
 def test_invoke_ai_graph_orchestrator_unavailable(test_client: TestClient) -> None:
@@ -202,7 +242,7 @@ def test_invoke_ai_graph_orchestrator_unavailable(test_client: TestClient) -> No
     app.state.orchestrator = None
 
     request_data = {
-        "intent": "test_intent",
+        "prompt": "Test run",
     }
 
     response = test_client.post("/ai/graph/invoke", json=request_data)
@@ -216,7 +256,7 @@ def test_invoke_ai_graph_execution_error(
 ) -> None:
     """Test error handling when graph execution fails."""
     request_data = {
-        "intent": "failing_intent",
+        "prompt": "Make this fail",
     }
 
     # Mock orchestrator to raise an exception
@@ -232,7 +272,7 @@ def test_invoke_ai_graph_invalid_request(test_client: TestClient) -> None:
     """Test error handling for invalid request data."""
     # Missing required 'intent' field
     request_data = {
-        "channel": "email",
+        "hints": {"channel": "email"},
     }
 
     response = test_client.post("/ai/graph/invoke", json=request_data)
