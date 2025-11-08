@@ -3,11 +3,13 @@ import pytest
 from src.orchestration.graph import build_langgraph
 from src.orchestration.models import Audience, OrchestrationRequest, WorkflowStatus
 from src.orchestration.plugins.demo import register_demo_plugin
+from src.orchestration.plugins.resend_email import register_resend_plugin
 
 
 @pytest.mark.asyncio
 async def test_langgraph_executes_demo_plugin() -> None:
     register_demo_plugin()
+    register_resend_plugin()
     graph = build_langgraph()
     request = OrchestrationRequest(
         intent="send_broadcast",

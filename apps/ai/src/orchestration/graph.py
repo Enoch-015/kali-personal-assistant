@@ -359,16 +359,61 @@ async def execute_plugin(state: AgentState) -> dict[str, Any]:
     if plugin is None:
         raise RuntimeError(f"No plugin registered under name '{plugin_name}'")
 
+    reasoner = get_reasoning_agent()
     rendered = state.get("rendered_message") or ""
-    result: PluginDispatchResult = await plugin.dispatch(request, rendered)
+    catalog = registry.describe()
+    plan = await reasoner.plan_plugin_execution(
+        request,
+        plugin_name=plugin.name,
+        rendered_message=rendered,
+        catalog=catalog,
+    )
+
+    dispatch_plugin = registry.get(plan.plugin_name)
+    if dispatch_plugin is None:
+        dispatch_plugin = plugin
+
+    message_to_send = plan.message or rendered
+    request_for_plugin = plan.apply_to_request(request)
+    dispatch_context = {
+        "metadata_overrides": plan.metadata,
+        "payload_overrides": plan.payload,
+        "audience_override": plan.audience,
+        "rationale": plan.rationale,
+    }
+    audience_recipients = None
+    if plan.audience and isinstance(plan.audience.get("recipients"), list):
+        audience_recipients = plan.audience.get("recipients")
+    if audience_recipients:
+        dispatch_context["recipients"] = audience_recipients
+
+    result: PluginDispatchResult = await dispatch_plugin.dispatch(
+        request_for_plugin,
+        message_to_send,
+        context=dispatch_context,
+    )
     event = AgentEvent(
         type="plugin.dispatched",
         message=f"Plugin '{result.plugin_name}' dispatched",
         data={"dispatched_count": result.dispatched_count},
     )
+    if plan.rationale:
+        event.data["executor_rationale"] = plan.rationale
+    if plan.metadata or plan.payload or plan.audience:
+        event.data["tool_overrides"] = {
+            "metadata": bool(plan.metadata),
+            "payload": bool(plan.payload),
+            "audience": bool(plan.audience),
+        }
+
+    notes = list(state.get("working_notes") or [])
+    if plan.rationale:
+        notes.append(plan.rationale)
     return {
         "status": WorkflowStatus.DISPATCHING,
         "plugin_result": result,
+        "selected_plugin": dispatch_plugin.name,
+        "working_notes": notes,
         "events": _with_event(state, event),
     }
 
