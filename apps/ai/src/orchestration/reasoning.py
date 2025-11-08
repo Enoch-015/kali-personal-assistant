@@ -41,6 +41,35 @@ class PluginDecision:
 
 
 @dataclass
+class PluginToolCall:
+    """Represents an LLM-authored plugin invocation plan."""
+
+    plugin_name: str
+    message: str
+    rationale: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    payload: Dict[str, Any] = field(default_factory=dict)
+    audience: Optional[Dict[str, Any]] = None
+
+    def apply_to_request(self, request: OrchestrationRequest) -> OrchestrationRequest:
+        update: Dict[str, Any] = {}
+        if self.metadata:
+            update["metadata"] = {**(request.metadata or {}), **self.metadata}
+        if self.payload:
+            update["payload"] = {**(request.payload or {}), **self.payload}
+        if self.audience:
+            update["audience"] = self.audience
+        if not update:
+            return request
+        try:
+            base = request.model_dump()
+            base.update(update)
+            return OrchestrationRequest.model_validate(base)
+        except ValidationError:
+            return request
+
+
+@dataclass
 class RequestInterpretation:
     """Represents the interpreted orchestration request extracted from natural language."""
 
@@ -339,7 +368,12 @@ class OrchestrationReasoner:
                 rationale = f"Selected plugin based on channel '{request.channel or 'demo'}'"
                 confidence = 0.7
 
-        available_plugins = ", ".join(sorted(plugin_registry.names())) or "demo-messaging"
+        catalog = plugin_registry.describe()
+        if catalog:
+            catalog_entries = [f"{name}: {desc}" for name, desc in sorted(catalog.items())]
+            available_plugins = "; ".join(catalog_entries)
+        else:
+            available_plugins = "demo-messaging"
         plugin_context = (
             "Available plugins you may choose from: "
             f"{available_plugins}. Only select one of these registered plugin names."
@@ -370,6 +404,78 @@ class OrchestrationReasoner:
                     )
 
         return PluginDecision(plugin_name=candidate, rationale=rationale, confidence=confidence)
+
+    async def plan_plugin_execution(
+        self,
+        request: OrchestrationRequest,
+        *,
+        plugin_name: str,
+        rendered_message: str,
+        catalog: Dict[str, str],
+    ) -> PluginToolCall:
+        fallback_rationale = f"Dispatch {plugin_name} using default parameters"
+        fallback = PluginToolCall(
+            plugin_name=plugin_name,
+            message=rendered_message,
+            rationale=fallback_rationale,
+        )
+
+        if not catalog:
+            catalog = {plugin_name: "Primary plugin selected by router."}
+
+        llm_prompt = (
+            "You are the execution supervisor responsible for invoking a single registered plugin.\n"
+            f"{PROMPT_DEFINITIONS}"
+            "Review the selected plugin and craft the exact call parameters.\n"
+            "Respond with JSON using keys: plugin (string, must match an available plugin),\n"
+            "message (string body to send), metadata (object merged into request.metadata),\n"
+            "payload (object merged into request.payload), audience (object describing recipients),\n"
+            "and rationale (string explaining the decision).\n"
+            f"Available plugins: {self._format_plugin_catalog(catalog)}\n"
+            f"Selected plugin suggestion: {plugin_name}\n"
+            f"Current intent: {request.intent}\n"
+            f"Channel: {request.channel}\n"
+            f"Existing payload: {json.dumps(request.payload or {}, ensure_ascii=False)}\n"
+            f"Existing metadata: {json.dumps(request.metadata or {}, ensure_ascii=False)}\n"
+            f"Rendered message: {rendered_message}\n"
+            "Only choose from the available plugin names."
+        )
+
+        llm_response = await self._call_llm_if_configured(llm_prompt)
+        if not llm_response:
+            return fallback
+
+        try:
+            parsed = json.loads(llm_response)
+        except json.JSONDecodeError:
+            fallback.rationale = llm_response.strip() or fallback.rationale
+            return fallback
+
+        plugin_value = str(parsed.get("plugin") or plugin_name).strip() or plugin_name
+        message_value = str(parsed.get("message") or rendered_message)
+
+        metadata_update = parsed.get("metadata")
+        if not isinstance(metadata_update, dict):
+            metadata_update = {}
+
+        payload_update = parsed.get("payload")
+        if not isinstance(payload_update, dict):
+            payload_update = {}
+
+        audience_update = parsed.get("audience")
+        if not isinstance(audience_update, dict):
+            audience_update = None
+
+        rationale = str(parsed.get("rationale") or fallback.rationale)
+
+        return PluginToolCall(
+            plugin_name=plugin_value,
+            message=message_value,
+            rationale=rationale,
+            metadata=metadata_update,
+            payload=payload_update,
+            audience=audience_update,
+        )
 
     async def generate_payload(
         self,
@@ -486,6 +592,13 @@ class OrchestrationReasoner:
             issues=issues_out,
             recommendations=recs_out,
         )
+
+    def _format_plugin_catalog(self, catalog: Dict[str, str]) -> str:
+        entries = []
+        for name, description in catalog.items():
+            safe_description = (description or name).strip().replace("\n", " ")
+            entries.append(f"{name}: {safe_description}")
+        return "; ".join(entries)
 
 
     async def _call_llm_if_configured(self, prompt: Optional[str]) -> Optional[str]:

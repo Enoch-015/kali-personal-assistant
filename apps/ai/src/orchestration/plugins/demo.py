@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from src.orchestration.models import OrchestrationRequest, PluginDispatchResult
 from src.orchestration.plugins.base import BasePlugin, registry
@@ -20,7 +20,13 @@ class DemoMessagingPlugin(BasePlugin):
 
     name = "demo-messaging"
 
-    async def dispatch(self, request: OrchestrationRequest, message_body: str) -> PluginDispatchResult:
+    async def dispatch(
+        self,
+        request: OrchestrationRequest,
+        message_body: str,
+        *,
+        context: Dict[str, Any] | None = None,
+    ) -> PluginDispatchResult:
         await asyncio.sleep(0.05)  # simulate async work
         audience = request.audience.recipients if request.audience else [request.payload.get("recipient", "demo")]
         recipients: List[str] = audience or ["demo@local"]
@@ -29,10 +35,12 @@ class DemoMessagingPlugin(BasePlugin):
             len(recipients),
             request.intent,
         )
-        metadata: Dict[str, str] = {
+        metadata: Dict[str, Any] = {
             "preview": message_body[:120],
             "intent": request.intent,
         }
+        if context:
+            metadata["tool_context"] = context
         return PluginDispatchResult(
             plugin_name=self.name,
             dispatched_count=len(recipients),
@@ -46,5 +54,4 @@ def register_demo_plugin() -> None:
     registry.register(plugin)
     # Provide convenient aliases so demo plugin can respond to common channels.
     registry.register_alias("whatsapp", plugin)
-    registry.register_alias("email", plugin)
     registry.register_alias("demo", plugin)

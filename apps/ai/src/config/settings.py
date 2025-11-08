@@ -112,6 +112,29 @@ class SMTPSettings(BaseModel):
     )
 
 
+class ResendSettings(BaseModel):
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key used for authenticating with Resend.",
+        validation_alias=AliasChoices("RESEND_API_KEY", "resend_api_key"),
+    )
+    from_address: Optional[str] = Field(
+        default="no-reply@kalienterprise.com",
+        description="Default sender email address when none is provided in the request.",
+        validation_alias=AliasChoices("RESEND_FROM_ADDRESS", "resend_from_address", "resend_from"),
+    )
+    default_recipient: Optional[str] = Field(
+        default=None,
+        description="Fallback recipient when a request omits recipients.",
+        validation_alias=AliasChoices("RESEND_DEFAULT_RECIPIENT", "resend_default_recipient"),
+    )
+    deliver: bool = Field(
+        default=False,
+        description="Send messages via Resend when true; otherwise run in dry-run mode.",
+        validation_alias=AliasChoices("RESEND_DELIVER", "resend_deliver"),
+    )
+
+
 class LangGraphSettings(BaseModel):
     checkpoint_store: Literal["memory", "sqlite"] = Field(default="memory")
     checkpoint_path: str = Field(
@@ -384,6 +407,7 @@ class Settings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     mongo: MongoSettings = Field(default_factory=MongoSettings)
     smtp: SMTPSettings = Field(default_factory=SMTPSettings)
+    resend: ResendSettings = Field(default_factory=ResendSettings)
     review_max_retries: int = Field(
         default=1,
         ge=0,
@@ -415,6 +439,9 @@ class Settings(BaseSettings):
 
         if redis_update:
             self.redis = self.redis.model_copy(update=redis_update)
+
+        if not self.resend.api_key and self.resend.deliver:
+            self.resend = self.resend.model_copy(update={"deliver": False})
 
         graphiti_update = {}
         if self.graphiti.has_credentials and not self.graphiti.enabled:

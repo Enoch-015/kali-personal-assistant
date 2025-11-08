@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
-from typing import Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 from src.orchestration.models import OrchestrationRequest, PluginDispatchResult
 
@@ -15,14 +16,23 @@ class BasePlugin(ABC):
     """
 
     name: str
+    description: str = ""
 
     @abstractmethod
     async def dispatch(
         self,
         request: OrchestrationRequest,
         message_body: str,
+        *,
+        context: Optional[Dict[str, Any]] = None,
     ) -> PluginDispatchResult:
         """Execute the plugin call for the provided request."""
+
+    def describe(self) -> str:
+        if self.description:
+            return self.description
+        doc = inspect.getdoc(self.__class__)
+        return doc or self.name
 
 
 class PluginRegistry:
@@ -44,8 +54,26 @@ class PluginRegistry:
     def all(self) -> Iterable[BasePlugin]:
         return self._plugins.values()
 
-    def names(self) -> Iterable[str]:
-        return self._plugins.keys()
+    def names(self) -> list[str]:
+        return sorted({key for key in self._plugins.keys()})
+
+    def describe(self) -> Dict[str, str]:
+        descriptions: Dict[str, str] = {}
+        alias_map: Dict[str, set[str]] = {}
+        for key, plugin in self._plugins.items():
+            canonical = plugin.name.lower()
+            alias_map.setdefault(canonical, set()).add(key)
+
+        for canonical, aliases in alias_map.items():
+            plugin = self._plugins.get(canonical)
+            if plugin is None:
+                continue
+            description = plugin.describe()
+            alias_list = sorted(alias for alias in aliases if alias != canonical)
+            if alias_list:
+                description = f"{description} (aliases: {', '.join(alias_list)})"
+            descriptions[canonical] = description
+        return descriptions
 
 
 registry = PluginRegistry()

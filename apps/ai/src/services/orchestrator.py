@@ -22,6 +22,7 @@ from src.orchestration.models import (
     WorkflowStatus,
 )
 from src.orchestration.plugins.demo import register_demo_plugin
+from src.orchestration.plugins.resend_email import register_resend_plugin
 from src.orchestration.reasoning import configure_reasoning_from_settings
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ class AgentOrchestrator:
         self._graph = build_langgraph(checkpointer=self._checkpointer)
         self._consumer_task: Optional[asyncio.Task[None]] = None
         self._shutdown = asyncio.Event()
+        register_resend_plugin()
         register_demo_plugin()
 
     async def start(self) -> None:
