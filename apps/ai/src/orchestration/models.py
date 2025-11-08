@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class WorkflowStatus(str, Enum):
     QUEUED = "queued"
+    INTERPRETING = "interpreting"
     ROUTING = "routing"
     POLICY_CHECK = "policy_check"
     FETCHING_CONTEXT = "fetching_context"
@@ -135,6 +136,10 @@ class AgentEvent(BaseModel):
 
 class AgentState(TypedDict, total=False):
     request: OrchestrationRequest
+    raw_prompt: str
+    request_hints: dict[str, Any]
+    interpretation_notes: list[str]
+    request_id_hint: str
     status: WorkflowStatus
     selected_workflow: str
     policy_decision: PolicyDecision
@@ -166,3 +171,47 @@ def new_initial_state(request: OrchestrationRequest) -> AgentState:
         "requires_human_approval": False,
         "retry_count": 0,
     }
+
+
+class GraphInvocationHints(BaseModel):
+    """Optional structured hints that guide natural language interpretation."""
+
+    channel: str | None = Field(default=None, description="Preferred delivery channel")
+    audience: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional audience specification (recipients list or segment)",
+    )
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Suggested payload template or variables",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata to attach to the interpreted request",
+    )
+
+
+class NaturalLanguageGraphRequest(BaseModel):
+    """Represents a natural language invocation of the AI graph."""
+
+    request_id: str = Field(default_factory=lambda: str(uuid4()))
+    prompt: str = Field(..., min_length=1, description="Natural language instruction")
+    hints: GraphInvocationHints | None = Field(
+        default=None,
+        description="Optional structured hints that seed the interpreter",
+    )
+
+    @property
+    def normalized_hints(self) -> dict[str, Any]:
+        hints: dict[str, Any] = {}
+        if self.hints is None:
+            return hints
+        if self.hints.channel:
+            hints["channel"] = self.hints.channel
+        if self.hints.audience:
+            hints["audience"] = self.hints.audience
+        if self.hints.payload:
+            hints["payload"] = self.hints.payload
+        if self.hints.metadata:
+            hints["metadata"] = self.hints.metadata
+        return hints

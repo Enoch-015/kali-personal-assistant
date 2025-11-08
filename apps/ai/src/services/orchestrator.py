@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
+from uuid import uuid4
 
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -13,6 +14,7 @@ from src.orchestration.models import (
     AgentEvent,
     AgentState,
     MemoryUpdate,
+    NaturalLanguageGraphRequest,
     OrchestrationRequest,
     PolicyDecision,
     PluginDispatchResult,
@@ -96,21 +98,55 @@ class AgentOrchestrator:
             self._consumer_task = None
         logger.info("Agent orchestrator consumer stopped")
 
-    async def enqueue(self, request: OrchestrationRequest) -> str:
-        payload = {
-            "run_id": request.request_id,
-            "request": request.model_dump(),
-        }
-        await self._event_bus.publish(self._event_bus.request_channel, payload)
-        return request.request_id
-
-    async def run(self, request: OrchestrationRequest, run_id: Optional[str] = None) -> AgentState:
-        config = {
-            "configurable": {
-                "thread_id": run_id or request.request_id,
+    def _prepare_run_payload(
+        self,
+        request: Union[OrchestrationRequest, NaturalLanguageGraphRequest],
+    ) -> Dict[str, Any]:
+        if isinstance(request, OrchestrationRequest):
+            return {
+                "run_id": request.request_id,
+                "kind": "structured",
+                "request": request.model_dump(),
             }
-        }
-        result: AgentState = await self._graph.ainvoke({"request": request}, config=config)
+        if isinstance(request, NaturalLanguageGraphRequest):
+            return {
+                "run_id": request.request_id,
+                "kind": "natural_language",
+                "raw_prompt": request.prompt,
+                "request_hints": request.normalized_hints,
+            }
+        raise TypeError(f"Unsupported request type: {type(request).__name__}")
+
+    async def enqueue(
+        self,
+        request: Union[OrchestrationRequest, NaturalLanguageGraphRequest],
+    ) -> str:
+        payload = self._prepare_run_payload(request)
+        await self._event_bus.publish(self._event_bus.request_channel, payload)
+        return payload["run_id"]
+
+    async def run(
+        self,
+        request: Union[OrchestrationRequest, NaturalLanguageGraphRequest],
+        run_id: Optional[str] = None,
+    ) -> AgentState:
+        payload = self._prepare_run_payload(request)
+        thread_id = run_id or payload["run_id"]
+        if payload["kind"] == "structured":
+            request_obj = OrchestrationRequest.model_validate(payload["request"])
+            state_input: Dict[str, Any] = {"request": request_obj}
+        else:
+            state_input = {
+                "raw_prompt": payload["raw_prompt"],
+                "request_hints": payload.get("request_hints") or {},
+                "working_notes": [],
+                "events": [],
+                "status": WorkflowStatus.QUEUED,
+                "request_id_hint": thread_id,
+            }
+
+        config = {"configurable": {"thread_id": thread_id}}
+        result: AgentState = await self._graph.ainvoke(state_input, config=config)
         return result
 
     async def get_state(self, run_id: str) -> Optional[AgentState]:
@@ -126,16 +162,42 @@ class AgentOrchestrator:
                 if self._shutdown.is_set():
                     break
                 payload = event.payload
-                try:
-                    request_data = payload.get("request", payload)
-                    request = OrchestrationRequest.model_validate(request_data)
-                except Exception as exc:  # pragma: no cover - defensive logging
-                    logger.exception("Failed to parse orchestration request: %s", exc)
+                kind = payload.get("kind", "structured")
+                run_id = payload.get("run_id")
+
+                if kind == "structured":
+                    try:
+                        request_data = payload.get("request", payload)
+                        request = OrchestrationRequest.model_validate(request_data)
+                    except Exception as exc:  # pragma: no cover - defensive logging
+                        logger.exception("Failed to parse orchestration request: %s", exc)
+                        continue
+                    run_id = run_id or request.request_id
+                    request_input: Union[OrchestrationRequest, NaturalLanguageGraphRequest] = request
+                elif kind == "natural_language":
+                    raw_prompt = payload.get("raw_prompt")
+                    if not raw_prompt:
+                        logger.warning("Received natural language payload without prompt; skipping")
+                        continue
+                    effective_id = run_id or payload.get("request_id") or str(uuid4())
+                    try:
+                        request_input = NaturalLanguageGraphRequest.model_validate(
+                            {
+                                "request_id": effective_id,
+                                "prompt": raw_prompt,
+                                "hints": payload.get("request_hints"),
+                            }
+                        )
+                    except Exception as exc:
+                        logger.exception("Failed to parse natural language request: %s", exc)
+                        continue
+                    run_id = request_input.request_id
+                else:
+                    logger.warning("Unknown payload kind '%s'", kind)
                     continue
 
-                run_id = payload.get("run_id") or request.request_id
                 try:
-                    result = await self.run(request, run_id=run_id)
+                    result = await self.run(request_input, run_id=run_id)
                 except Exception as exc:  # pragma: no cover - orchestrator should not crash
                     logger.exception("Orchestration execution failed: %s", exc)
                     status_payload = {
