@@ -90,27 +90,6 @@ class MongoSettings(BaseModel):
     )
 
 
-class SMTPSettings(BaseModel):
-    host: str = Field(default="localhost", description="SMTP server hostname")
-    port: int = Field(default=1025, ge=1, le=65535, description="SMTP server port")
-    username: Optional[str] = Field(default=None, description="SMTP username for authentication")
-    password: Optional[str] = Field(default=None, description="SMTP password for authentication")
-    use_tls: bool = Field(default=False, description="Upgrade connection to TLS via STARTTLS")
-    use_ssl: bool = Field(default=False, description="Establish SMTP connection over SSL")
-    timeout: float = Field(default=10.0, ge=1.0, le=60.0, description="Socket timeout in seconds")
-    from_address: Optional[str] = Field(
-        default="no-reply@kali.local",
-        description="Default sender email address if not provided in a request",
-    )
-    default_recipient: Optional[str] = Field(
-        default=None,
-        description="Fallback recipient when none are provided by the request",
-    )
-    deliver: bool = Field(
-        default=False,
-        description="Send messages via SMTP when true; otherwise run in dry-run mode.",
-    )
-
 
 class ResendSettings(BaseModel):
     api_key: Optional[str] = Field(
@@ -406,7 +385,6 @@ class Settings(BaseSettings):
     )
     redis: RedisSettings = Field(default_factory=RedisSettings)
     mongo: MongoSettings = Field(default_factory=MongoSettings)
-    smtp: SMTPSettings = Field(default_factory=SMTPSettings)
     resend: ResendSettings = Field(default_factory=ResendSettings)
     review_max_retries: int = Field(
         default=1,
@@ -621,7 +599,7 @@ class Settings(BaseSettings):
                 continue
 
         return overrides
-
+smtp: SMTPSettings = Field(default_factory=SMTPSettings)
 
 def get_settings(override: Optional[dict] = None) -> Settings:
     return Settings(**(override or {}))
