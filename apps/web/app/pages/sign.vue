@@ -130,7 +130,7 @@ function backToForm() {
     <div class="relative flex flex-col justify-center items-center w-full lg:w-1/2 px-2">
       <!-- Logo pinned to top-left -->
       <NuxtImg
-        src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
+        src="v1762635825/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11_igmqeu.png"
         alt="Kali-E Logo"
         width="48"
         height="48"
@@ -297,7 +297,7 @@ function backToForm() {
     <!-- Right half -->
     <div class="hidden lg:flex lg:w-1/2">
       <NuxtImg
-        src="/img/Gemini_Generated_Image_sfebllsfebllsfeb.png"
+        src="v1762636794/Gemini_Generated_Image_sfebllsfebllsfeb_ry4scl.png"
         alt="Hero Image"
         width="1280"
         class="max-w-full h-full opacity-50"

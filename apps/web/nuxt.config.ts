@@ -40,4 +40,12 @@ export default defineNuxtConfig({
     // Place generated UI components in the Nuxt components directory
     componentDir: "./app/components/ui",
   },
+  image: {
+    provider: "cloudinary", // 👈 if your service is Cloudinary-compatible
+    cloudinary: {
+      baseURL: "https://res.cloudinary.com/dqujwuelb/image/upload",
+      // OR if using fetch for remote images:
+      // baseURL: "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/fetch/",
+    },
+  },
 });
