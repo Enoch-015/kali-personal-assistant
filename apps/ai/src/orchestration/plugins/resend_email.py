@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+import asyncio 
 import html
 import logging
 import os
@@ -14,7 +14,6 @@ from src.orchestration.models import OrchestrationRequest, PluginDispatchResult
 from src.orchestration.plugins.base import BasePlugin, registry
 
 logger = logging.getLogger(__name__)
-
 
 def _flatten_recipients(values: Iterable[str | None]) -> List[str]:
     recipients: List[str] = []
@@ -85,7 +84,7 @@ def _extract_subject_line(message: str) -> tuple[Optional[str], str]:
 class ResendEmailPlugin(BasePlugin):
     """Dispatches email notifications through the Resend API."""
 
-    name = "resend-email"
+    name = "resend-email"  
     description = "Dispatch email notifications using Resend with structured payload support."
 
     async def dispatch(
