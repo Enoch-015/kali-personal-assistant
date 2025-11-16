@@ -186,7 +186,7 @@ function formatDownloads(n: number) {
           :class="{ active: activeTab === 'installed' }"
           @click="activeTab = 'installed'"
         >
-          Installed ({{ plugins.filter(p => p.installed).length }})
+          Added ({{ plugins.filter(p => p.installed).length }})
         </button>
       </div>
     </header>
@@ -285,7 +285,7 @@ function formatDownloads(n: number) {
             class="btn btn-sm btn-primary w-full gap-2"
             @click="toggleInstall(p)"
           >
-            <Icon name="tabler-download" /> Install
+            <Icon name="tabler-download" /> Add to Kali
           </button>
         </div>
       </div>
