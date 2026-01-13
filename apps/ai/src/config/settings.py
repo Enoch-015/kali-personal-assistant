@@ -599,7 +599,6 @@ class Settings(BaseSettings):
                 continue
 
         return overrides
-smtp: SMTPSettings = Field(default_factory=SMTPSettings)
 
 def get_settings(override: Optional[dict] = None) -> Settings:
     return Settings(**(override or {}))

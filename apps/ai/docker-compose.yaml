@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ------------------------
   # Redis (L1 / L2 Cache)
@@ -68,7 +66,7 @@ services:
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 5
 
   # ------------------------
@@ -83,6 +81,27 @@ services:
     depends_on:
       - redis
 
+  # ------------------------
+  # LiveKit Server (Dev Mode)
+  # ------------------------
+  livekit:
+    image: livekit/livekit-server
+    container_name: kali-livekit
+    environment:
+      # API key:secret format MUST include space after colon
+      LIVEKIT_KEYS: "devkey: secret"
+    ports:
+      - "7880:7880"   # Signaling / WebSocket
+      - "7881:7881"   # TCP fallback
+      - "50000-50100:50000-50100/udp"  # WebRTC media
+    restart: unless-stopped
+    command: --dev
+    depends_on:
+      - redis  # optional if you want caching
+
+# ------------------------
+# Named Volumes
+# ------------------------
 volumes:
   redis_data:
   neo4j_data:
