@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "lucide-vue-next": "^0.544.0"
   }
 }

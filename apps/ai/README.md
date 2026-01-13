@@ -1,152 +1,89 @@
-# Kali Personal Assistant API
+# Kali Personal Assistant – AI service
 
-FastAPI backend for the Kali Personal Assistant application.
+FastAPI + LangGraph worker that orchestrates AI workflows for the Kali Personal Assistant. The service can run requests synchronously (HTTP) or asynchronously (Redis event bus) and ships with governance, memory, and plugin dispatch built in.
 
-## Setup
+## What actually happens today
 
-1. Create a virtual environment:
+Each run flows through a LangGraph state machine (`src/orchestration/graph.py`):
+
+1) **Intake**: Natural language prompts are interpreted into `OrchestrationRequest` objects; structured requests skip interpretation.
+2) **Routing**: A reasoning helper chooses a workflow (`broadcast` when audience is present; otherwise `generic-task`, or a caller-provided workflow).
+3) **Policy check**: Policy directives from Mongo (or in-memory fallback) are applied. Blocks or human-approval flags halt early.
+4) **Context fetch**: Pulls memory via Graphiti if enabled; otherwise emits demo snippets. Validation marks relevance.
+5) **Planning + reflection**: Produces a short action plan and a reflection summary for observability.
+6) **Plugin selection + rendering**: Picks a plugin (caller override, channel-based, or demo), renders a message template, and lets the reasoning helper refine the dispatch plan.
+7) **Dispatch**: Executes the chosen plugin. Bundled options: `demo-messaging` (simulated delivery; aliases `demo`, `whatsapp`) and `resend-email` (real email when RESEND_* is configured; dry-run otherwise).
+8) **Review loop**: A sentinel reviews results, policy flags, and context quality. The review agent may retry the workflow (with routed context) up to `review_max_retries` (default 1) or finish.
+9) **Memory update**: Writes a summary back to Graphiti when enabled; otherwise no-op.
+10) **Finalize**: Marks status and emits completion events.
+
+Async runs are published to Redis (`kali:agent.requests`); the orchestrator consumes, executes the graph, and publishes status/state to `kali:agent.status`. Sync runs execute inline and return serialized state.
+
+## Endpoints (FastAPI `src/main.py`)
+
+- `GET /` health banner.
+- `GET /health` liveness probe.
+- `POST /orchestration/requests?mode=async|sync` – structured `OrchestrationRequest` entrypoint. Async enqueues to Redis; sync runs the graph and returns state.
+- `POST /router/requests?mode=async|sync` – same as above but tags metadata.source=`router`.
+- `POST /ai/graph/invoke?mode=sync|async` – accepts `NaturalLanguageGraphRequest` (prompt + hints) or structured payload; adds metadata.source=`ai_graph_invoke` and routes through the same LangGraph.
+- `GET /orchestration/runs/{run_id}` – fetch latest serialized state (from LangGraph checkpoint).
+
+## Runtime components
+
+- **LangGraph**: in-memory checkpointing by default; configurable via `LANGGRAPH_*` settings. Thread IDs map to run IDs.
+- **Redis event bus**: Pub/Sub channels are namespaced from `RedisSettings` (see `src/config/settings.py`). Required for async mode.
+- **Reasoning helper**: Pure-Python heuristics with optional LLM calls when an async-capable model is configured (see `configure_reasoning_from_settings`).
+- **Policy engine**: Pulls user-captured directives from Mongo when available; otherwise uses an in-memory store. Detects “never do …” blocks and “tell me if …” notifications.
+- **Memory service**: Wraps Graphiti when `GRAPHITI_ENABLED=true`; otherwise returns demo snippets. Also persists summaries back to Graphiti after successful runs.
+- **Plugins**: Registry pattern (`src/orchestration/plugins/base.py`). Built-ins:
+  - `demo-messaging`: Simulated dispatch; used as default/alias for `demo` and `whatsapp` channels.
+  - `resend-email`: Real email via Resend. Dry-run unless `RESEND_DELIVER=true` and `RESEND_API_KEY` set.
+
+## Running locally
+
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-2. Install dependencies:
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
-```
 
-3. Provision the knowledge graph (optional but recommended):
-
-	Graphiti powers the assistant's long-term memory when Neo4j and an LLM provider are configured.
-
-	- Install Neo4j 5.26+ (Neo4j Desktop or Docker) and ensure it is running.
-	- Export the base credentials before starting the API:
-
-		```bash
-		export GRAPHITI_ENABLED=true
-		export NEO4J_URI=bolt://localhost:7687
-		export NEO4J_USER=neo4j
-		export NEO4J_PASSWORD=your_password
-		export GRAPHITI_GROUP_ID=optional_namespace
-		export GRAPHITI_BUILD_INDICES=true  # optional, builds indices on first use
-		export GRAPHITI_LLM_PROVIDER=openai  # defaults to openai when unset
-		```
-
-	- Configure an LLM provider. Only one provider needs to be active at a time; `GRAPHITI_LLM_PROVIDER` selects which
-	  block to use.
-
-	#### OpenAI (default)
-
-	```bash
-	export OPENAI_API_KEY=your_openai_api_key
-	export OPENAI_MODEL=gpt-4o                             # optional override
-	export OPENAI_SMALL_MODEL=gpt-3.5-turbo                 # reranker / "small" model
-	export OPENAI_EMBEDDING_MODEL=text-embedding-3-small    # embedding model
-	```
-
-	#### Azure OpenAI
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=azure
-	export OPENAI_API_KEY=azure_llm_key
-	export AZURE_OPENAI_ENDPOINT=https://your-llm-resource.openai.azure.com/
-	export AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o-mini
-	export AZURE_OPENAI_API_VERSION=2024-05-01-preview
-	export AZURE_OPENAI_EMBEDDING_API_KEY=azure_embedding_key
-	export AZURE_OPENAI_EMBEDDING_ENDPOINT=https://your-embedding-resource.openai.azure.com/
-	export AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=text-embedding-3-small
-	export AZURE_OPENAI_EMBEDDING_API_VERSION=2024-05-01-preview
-	# Optionally: export AZURE_OPENAI_USE_MANAGED_IDENTITY=true
-	```
-
-	#### Google Gemini
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=gemini
-	export GOOGLE_API_KEY=your_gemini_api_key
-	export GRAPHITI_GEMINI_MODEL=gemini-2.0-flash                  # optional
-	export GRAPHITI_GEMINI_EMBEDDING_MODEL=embedding-001            # optional
-	export GRAPHITI_GEMINI_RERANKER_MODEL=gemini-2.0-flash-exp      # optional
-	```
-
-	#### Anthropic (requires OpenAI embeddings + reranker)
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=anthropic
-	export ANTHROPIC_API_KEY=your_anthropic_api_key
-	export OPENAI_API_KEY=your_openai_api_key
-	export ANTHROPIC_MODEL=claude-sonnet-4-20250514          # optional
-	export ANTHROPIC_SMALL_MODEL=claude-3-5-haiku-20241022    # optional
-	```
-
-	#### Groq (uses OpenAI for embeddings)
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=groq
-	export GROQ_API_KEY=your_groq_api_key
-	export OPENAI_API_KEY=your_openai_api_key
-	export GROQ_MODEL=llama-3.1-70b-versatile              # optional
-	export GROQ_SMALL_MODEL=llama-3.1-8b-instant           # optional
-	```
-
-	#### Ollama (local models)
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=ollama
-	export OLLAMA_BASE_URL=http://localhost:11434/v1        # defaults to this value
-	export OLLAMA_MODEL=deepseek-r1:7b
-	export OLLAMA_EMBEDDING_MODEL=nomic-embed-text
-	export OLLAMA_EMBEDDING_DIM=768
-	```
-
-	#### OpenAI-Compatible (Mistral, Together, etc.)
-
-	```bash
-	export GRAPHITI_LLM_PROVIDER=generic
-	export GENERIC_API_KEY=your_provider_api_key
-	export GENERIC_BASE_URL=https://api.mistral.ai/v1       # provider-specific URL
-	export GENERIC_MODEL=mistral-large-latest               # optional
-	export GENERIC_SMALL_MODEL=mistral-small-latest         # optional
-	export GENERIC_EMBEDDING_MODEL=mistral-embed            # optional
-	```
-
-	The first request will automatically build indices when `GRAPHITI_BUILD_INDICES=true` is set. Adjust `SEMAPHORE_LIMIT`
-	(default `10`) to tune ingestion concurrency and avoid rate limits. For complete recipes, see the
-	[Graphiti Quickstart](https://github.com/getzep/graphiti/tree/main/examples/quickstart).
-
-4. Run the development server:
-```bash
-pnpm dev:api
-# or directly:
+# start Redis (local) then launch the API
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+# or use the repo script
+pnpm dev:api
 ```
 
-5. Access the API:
-- API: http://localhost:8000
-- Interactive docs: http://localhost:8000/docs
-- Alternative docs: http://localhost:8000/redoc
+Visit `http://localhost:8000/docs` for Swagger and `http://localhost:8000/redoc` for ReDoc.
 
-## Project Structure
+## Key configuration (env)
+
+- Redis: `REDIS_URL`, `REDIS_CHANNEL_PREFIX` (defaults: `redis://localhost:6379/0`, `kali`).
+- LangGraph: `LANGGRAPH_CHECKPOINT_STORE` (`memory`|`sqlite`), `LANGGRAPH_CHECKPOINT_PATH`, `LANGGRAPH_MAX_CONCURRENCY`.
+- Graphiti (optional): `GRAPHITI_ENABLED`, `GRAPHITI_LLM_PROVIDER` (`openai|gemini|azure|anthropic|groq|ollama|generic`), Neo4j creds, `GRAPHITI_GROUP_ID`, `GRAPHITI_BUILD_INDICES`, search limits, plus provider-specific keys (OpenAI, Azure, Gemini, Anthropic, Groq, Ollama, generic OpenAI-compatible).
+- Mongo policy store (optional): `MONGO_URI`, `MONGO_DATABASE`, `MONGO_POLICIES_COLLECTION`, `MONGO_ENABLED`.
+- Resend email: `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `RESEND_DEFAULT_RECIPIENT`, `RESEND_DELIVER` (false = dry run).
+- Review retries: `REVIEW_MAX_RETRIES` (defaults to 1).
+
+All env vars are loaded from `apps/ai/.env` if present.
+
+## Project layout (trimmed)
 
 ```
-apps/api/
+apps/ai/
 ├── src/
-│   ├── main.py          # FastAPI application entry point
-│   ├── routers/         # API route handlers
-│   ├── models/          # Pydantic models
-│   ├── services/        # Business logic
-│   └── utils/           # Utility functions
-├── requirements.txt     # Python dependencies
-└── README.md
-
-## Knowledge Graph Integration
-
-- `src/services/graphiti_client.py`: Lazily instantiates the Graphiti SDK, performs hybrid fact/node searches, and
-	persists agent memory updates as Graphiti episodes with optional namespacing via `GRAPHITI_GROUP_ID`. Gemini is
-	supported by setting `GRAPHITI_LLM_PROVIDER=gemini` plus `GOOGLE_API_KEY`.
-- `src/orchestration/memory.py`: Provides the orchestration layer with contextual snippets sourced from Graphiti when
-	enabled and gracefully falls back to demo placeholders otherwise.
-
-To tune ingestion throughput, set `SEMAPHORE_LIMIT` (default `10`) according to your LLM provider's rate limits. Graphiti
-supports additional telemetry and provider toggles; consult the upstream docs for advanced configuration.
+│   ├── main.py                 # FastAPI entrypoint + endpoints
+│   ├── config/settings.py      # Typed settings (Redis, LangGraph, Graphiti, Mongo, Resend)
+│   ├── event_bus/redis_bus.py  # Redis Pub/Sub wrapper
+│   ├── orchestration/
+│   │   ├── graph.py            # LangGraph definition + workflow edges
+│   │   ├── memory.py           # Graphiti-backed memory provider with demo fallback
+│   │   ├── policy.py           # Policy store/engine + feedback capture
+│   │   ├── reasoning.py        # Reasoning helper + optional LLM hooks
+│   │   ├── review.py           # Sentinel + review agent (retries/human checks)
+│   │   └── plugins/            # Plugin registry, demo + Resend email
+│   └── services/
+│       ├── orchestrator.py     # Agent orchestrator, async consumer, state serialization
+│       ├── graphiti_client.py  # Optional Graphiti SDK wrapper
+│       └── redis_client.py     # Redis connection helper for tests
+├── requirements.txt
+└── README.md (this file)
 ```

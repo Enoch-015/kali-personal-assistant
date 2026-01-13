@@ -1,0 +1,19 @@
+{
+  "total_trials": 33,
+  "avg_direct_time_ms": 1172.9105326362928,
+  "avg_direct_accuracy": 0.3,
+  "avg_direct_content_accuracy": 0.7207070707070706,
+  "avg_cached_time_ms": 345.73892354621256,
+  "avg_cached_accuracy": 0.6181818181818182,
+  "avg_cached_content_accuracy": 0.7085858585858585,
+  "l1_hit_rate": 0.24242424242424243,
+  "l2_hit_rate": 0.7575757575757576,
+  "graphiti_fallback_rate": 0.0,
+  "avg_speedup": 41.64045386131936,
+  "max_speedup": 138.98517574470043,
+  "avg_accuracy_delta": 0.31818181818181807,
+  "avg_content_accuracy_delta": -0.012121212121212121,
+  "warm_l1_hit_rate": 0.23529411764705882,
+  "warm_avg_speedup": 58.10575977272043,
+  "warm_content_accuracy": 0.6254901960784314
+}

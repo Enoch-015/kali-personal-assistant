@@ -1,213 +1,59 @@
-# Intelligent Review System - Flow Diagram
+# AI Orchestration Flow (as implemented)
 
-## Overview Flow
+This diagram reflects the current LangGraph pipeline in `src/orchestration/graph.py`, including review and retry behavior.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Workflow Execution                        │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│              AgentSentinel.review()                         │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Analyze:                                              │  │
-│  │  • Plugin results → PLUGIN issues                    │  │
-│  │  • Planning completeness → PLANNING issues           │  │
-│  │  • Policy decisions → POLICY issues                  │  │
-│  │  • Context availability → CONTEXT issues             │  │
-│  │  • Validation results → VALIDATION issues            │  │
-│  │  • Errors → EXECUTION issues                         │  │
-│  │                                                       │  │
-│  │ Track:                                                │  │
-│  │  • Successful steps                                  │  │
-│  │  • Actionable vs non-actionable issues               │  │
-│  │                                                       │  │
-│  │ Generate:                                             │  │
-│  │  • Recommendations                                   │  │
-│  │  • Routing context                                   │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-                  ▼
-         ┌────────────────┐
-         │ ReviewFeedback │
-         │  + Issues      │
-         │  + Notes       │
-         │  + Context     │
-         └────────┬───────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│              ReviewAgent.evaluate()                          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Analyze Issues:                                       │  │
-│  │  ┌─────────────────────────────────────────────┐    │  │
-│  │  │ actionable = [i for i in issues if i.actionable] │ │  │
-│  │  │ non_actionable = [i for i in issues if not]     │ │  │
-│  │  └─────────────────────────────────────────────┘    │  │
-│  │                                                       │  │
-│  │ Decision Logic:                                       │  │
-│  │  ┌─────────────────────────────────────────────┐    │  │
-│  │  │ if critical_non_actionable:                      │ │  │
-│  │  │     return COMPLETE  # Don't retry              │ │  │
-│  │  │ elif actionable and retries_left:               │ │  │
-│  │  │     return RETRY  # Try with context            │ │  │
-│  │  │ else:                                            │ │  │
-│  │  │     return COMPLETE  # Done trying              │ │  │
-│  │  └─────────────────────────────────────────────┘    │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────┬───────────────────────────────────────────┘
-                  │
-       ┌──────────┴──────────┐
-       │                     │
-       ▼                     ▼
-  ┌─────────┐         ┌──────────┐
-  │ COMPLETE│         │  RETRY   │
-  └─────────┘         └────┬─────┘
-                           │
-                           ▼
-         ┌─────────────────────────────────────┐
-         │    route_request() [RETRY PATH]     │
-         │  ┌──────────────────────────────┐   │
-         │  │ Add to working notes:         │   │
-         │  │  • Previous stage            │   │
-         │  │  • Successful steps          │   │
-         │  │  • Issue categories          │   │
-         │  │  • Recommendations           │   │
-         │  │  • Routing constraints:      │   │
-         │  │    - Avoid failed plugins    │   │
-         │  │    - Policy constraints      │   │
-         │  └──────────────────────────────┘   │
-         └─────────────────┬───────────────────┘
-                           │
-                           ▼
-              ┌────────────────────────┐
-              │ Workflow Re-execution  │
-              │ (with better context)  │
-              └────────────────────────┘
-```
-
-## Issue Categorization Flow
+## High-level workflow
 
 ```
-Workflow State Analysis
-        │
-        ├─── Plugin Result? ──────────────► PLUGIN issue
-        │     └─ failed recipients          (actionable: true)
-        │
-        ├─── Empty Plan? ─────────────────► PLANNING issue
-        │                                    (actionable: true)
-        │
-        ├─── Policy Constraint? ──────────► POLICY issue
-        │     └─ requires_human = true      (actionable: false)
-        │
-        ├─── Low Context? ────────────────► CONTEXT issue
-        │     └─ empty snippets             (actionable: true)
-        │
-        ├─── Validation Failed? ──────────► VALIDATION issue
-        │                                    (actionable: true)
-        │
-        └─── Execution Error? ────────────► EXECUTION issue
-              └─ exception occurred         (actionable: true)
+START
+        → interpret_request       # Parse natural language into OrchestrationRequest (or pass through structured)
+        → route_request           # Choose workflow (broadcast/generic or caller-specified)
+        → policy_check            # Apply policy store; may require human or block
+        → fetch_context           # Retrieve memory (Graphiti if enabled; demo fallback)
+        → plan_actions            # Build coarse plan
+        → agent_reflection        # Summarize reasoning/risks
+        → select_plugin           # Pick plugin (metadata override > channel > demo)
+        → render_payload          # Render message/template
+        → [branch]
+                        dispatch path: execute_plugin → review_outcome
+                        skip path:                 └→ review_outcome (if no plugin)
+        → review_outcome          # Sentinel governance pass
+        → review_agent            # Decide RETRY vs COMPLETE
+                        RETRY → route_request  # Clears dispatch state, increments retry_count
+                        COMPLETE → update_memory → finalize → END
 ```
 
-## Retry Decision Tree
+## Review + retry focus
 
 ```
-                    ┌──────────────┐
-                    │ Issues Found?│
-                    └───────┬──────┘
-                            │
-              ┌─────────────┴─────────────┐
-              │ Yes                       │ No
-              ▼                           ▼
-    ┌─────────────────────┐       ┌──────────┐
-    │ Critical Non-       │       │ COMPLETE │
-    │ Actionable Issues?  │       │ (Success)│
-    └──────┬──────────────┘       └──────────┘
-           │
-    ┌──────┴───────┐
-    │ Yes          │ No
-    ▼              ▼
-┌──────────┐  ┌───────────────┐
-│ COMPLETE │  │ Retries Left? │
-│(Escalate)│  └───────┬───────┘
-└──────────┘          │
-              ┌───────┴────────┐
-              │ Yes            │ No
-              ▼                ▼
-        ┌──────────┐    ┌──────────┐
-        │  RETRY   │    │ COMPLETE │
-        │ (w/ctx)  │    │(Max tries)│
-        └──────────┘    └──────────┘
+AgentSentinel.review()
+        - Classifies issues: PLUGIN, PLANNING, POLICY, CONTEXT, VALIDATION, EXECUTION, OTHER
+        - Marks actionable vs non-actionable; captures severity
+        - Adds recommendations and routing_context (e.g., failed_plugin, policy_reason)
+        - Records successful_steps for observability
+
+ReviewAgent.evaluate()
+        - If critical non-actionable: COMPLETE (no retry)
+        - Else if actionable and retries remain: RETRY (re-route with added notes)
+        - Else: COMPLETE
+
+Retry route_request()
+        - Carries forward working_notes, review_notes, recommendations
+        - Resets plugin-specific state before replanning
 ```
 
-## Routing Context Example
+## Signals carried between stages
 
-```
-Initial Attempt:
-┌─────────────────────────────────────┐
-│ Request: "Send email notification"  │
-│ Plugin: email-plugin                │
-│ Recipients: [user1, user2]          │
-└─────────────────┬───────────────────┘
-                  │
-                  ▼
-          ┌───────────────┐
-          │ Plugin Failed │
-          │ user2 failed  │
-          └───────┬───────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────┐
-│ Review Notes Generated:                     │
-│ ┌─────────────────────────────────────────┐ │
-│ │ routing_context: {                      │ │
-│ │   "failed_plugin": "email-plugin",      │ │
-│ │   "failed_recipients": ["user2"],       │ │
-│ │   "successful_count": 1                 │ │
-│ │ }                                       │ │
-│ │ recommendations: [                      │ │
-│ │   "Try alternative delivery channel"    │ │
-│ │ ]                                       │ │
-│ └─────────────────────────────────────────┘ │
-└─────────────────┬───────────────────────────┘
-                  │
-                  ▼
-Retry Attempt:
-┌─────────────────────────────────────────────┐
-│ working_notes: [                            │
-│   "[Retry 1] Previous: reviewing",          │
-│   "Successful: email sent to user1",        │
-│   "Issues: plugin failure for user2",       │
-│   "Recommendation: Try alt channel",        │
-│   "Avoid plugin: email-plugin"              │
-│ ]                                           │
-│                                             │
-│ → Routing agent can now:                   │
-│   • Skip email-plugin                       │
-│   • Try SMS or other channel                │
-│   • Focus only on user2                     │
-└─────────────────────────────────────────────┘
-```
+- working_notes: cumulative breadcrumbs used by router/reasoner
+- selected_workflow: chosen path (broadcast/generic/custom)
+- policy_decision: allow/require_human/block + tags
+- retrieved_context/context_validation: memory snapshots + relevance check
+- planned_actions / analysis_summary: plan and reflection
+- selected_plugin / rendered_message / plugin_result: dispatch details
+- review_feedback / review_action / retry_count: governance loop state
+- memory_updates: summaries prepared for Graphiti commit
 
-## Benefits Visualization
+## Event channels (async mode)
 
-```
-Before (Simple Review):
-  ✗ Binary approval (yes/no)
-  ✗ Simple issue list
-  ✗ No categorization
-  ✗ No routing hints
-  ✗ Blind retries
-
-After (Intelligent Review):
-  ✓ Detailed issue analysis
-  ✓ Category-based insights
-  ✓ Actionability assessment
-  ✓ Routing context for replanning
-  ✓ Recommendation system
-  ✓ Success tracking
-  ✓ Smart retry decisions
-```
+- Requests published to Redis: `kali:agent.requests`
+- Status/state published to Redis: `kali:agent.status`

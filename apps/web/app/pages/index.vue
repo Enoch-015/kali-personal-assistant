@@ -10,98 +10,32 @@ function toggleListening() {
   // Add logic here to start/stop voice recognition
 }
 
-// --- KPIs ---
-type Kpi = {
-  id: string;
-  title: string;
-  value: number;
-  prev: number;
-  delta: number;
-  type?: "number" | "percent" | "ms" | "hours";
-  variant?: "gradient" | "plain";
-  sparkline?: number[];
-  accent?: string;
-  goodDirection?: "up" | "down";
-  baseline?: string;
-  deltaUnit?: string;
-};
-
-const kpis = reactive<Kpi[]>([
-  { id: "interactions", title: "AI Interactions", value: 328, prev: 290, delta: 13.1, type: "number", variant: "plain", sparkline: [180, 210, 250, 230, 260, 305, 328], accent: "text-purple-100", goodDirection: "up", baseline: "vs yesterday 290", deltaUnit: "%" },
-  { id: "automation", title: "Automation Time Saved", value: 2.8, prev: 2.3, delta: 22.0, type: "hours", variant: "plain", sparkline: [1.4, 1.6, 1.9, 2.1, 2.3, 2.5, 2.8], accent: "text-purple-300", goodDirection: "up", baseline: "vs last week avg 2.3h", deltaUnit: "%" },
-  { id: "latency", title: "Avg Response Latency", value: 420, prev: 445, delta: -5.6, type: "ms", variant: "plain", sparkline: [510, 505, 480, 470, 451, 438, 420], accent: "text-pink-300", goodDirection: "down", baseline: "vs last week 445ms", deltaUnit: "%" },
-]);
-
-function isFavorable(kpi: Kpi) {
-  const desired = kpi.goodDirection ?? "up";
-  return desired === "up" ? kpi.delta >= 0 : kpi.delta <= 0;
-}
-
-function deltaPillClasses(kpi: Kpi) {
-  const base = "border border-white/10";
-  if (kpi.delta === 0)
-    return `${base} bg-slate-500/15 text-slate-200`;
-  return isFavorable(kpi)
-    ? `${base} bg-emerald-500/15 text-emerald-200`
-    : `${base} bg-rose-500/15 text-rose-200`;
-}
-
-function deltaIcon(kpi: Kpi) {
-  if (kpi.delta === 0)
-    return "tabler-arrows-diff";
-  return isFavorable(kpi) ? "tabler-trending-up" : "tabler-trending-down";
-}
-
-function deltaText(kpi: Kpi) {
-  if (kpi.delta === 0)
-    return `0${kpi.deltaUnit ?? "%"}`;
-  const sign = kpi.delta > 0 ? "+" : "-";
-  const magnitude = Math.abs(kpi.delta);
-  const precision = magnitude >= 10 ? 0 : 1;
-  const formatted = magnitude.toFixed(precision).replace(/\.0$/, "");
-  return `${sign}${formatted}${kpi.deltaUnit ?? "%"}`;
-}
-
-function formatValue(kpi: Kpi) {
-  switch (kpi.type) {
-    case "percent":
-      return `${kpi.value.toFixed(0)}%`;
-    case "ms":
-      return `${kpi.value.toLocaleString()} ms`;
-    case "hours":
-      return `${kpi.value.toFixed(1)}h`;
-    default:
-      return kpi.value.toLocaleString();
-  }
-}
-
-function baselineLabel(kpi: Kpi) {
-  if (kpi.baseline)
-    return kpi.baseline;
-  if (kpi.type === "percent")
-    return `vs previous ${kpi.prev}%`;
-  if (kpi.type === "ms")
-    return `vs previous ${kpi.prev} ms`;
-  if (kpi.type === "hours")
-    return `vs previous ${kpi.prev}h`;
-  return `vs previous ${kpi.prev}`;
-}
-
-function sparkPath(points: number[]) {
-  if (!points.length)
-    return "";
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min || 1;
-  return points
-    .map((point, index) => {
-      const x = points.length === 1 ? 0 : (index / (points.length - 1)) * 100;
-      const y = 40 - ((point - min) / span) * 40;
-      const command = index === 0 ? "M" : "L";
-      return `${command}${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-}
+const exampleKpis = [
+  {
+    id: 1,
+    title: "AI Interactions",
+    value: "328",
+    sparklines: [10, 40, 25, 60, 80, 50],
+    baselineLabel: "vs yesterday 290",
+    deltaText: "5",
+  },
+  {
+    id: 2,
+    title: "Automation Time Saved",
+    value: "2.8",
+    sparklines: [15, 30, 45, 35, 60, 55],
+    baselineLabel: "vs last week avg 2.3h",
+    deltaText: "3.0",
+  },
+  {
+    id: 3,
+    title: "Avg Response Latency",
+    value: "420",
+    sparklines: [5, 10, 8, 12, 15, 11],
+    baselineLabel: "vs last week 89%",
+    deltaText: "22.0",
+  },
+];
 
 // --- Quick Actions ---
 // Note: Quick Actions data is defined but not used in the provided template.
@@ -246,8 +180,9 @@ onMounted(() => {
 <template>
   <div class="flex min-h-screen flex-col">
     <main class="dashboard-root mx-auto w-full max-w-[1650px] flex-1 px-3 py-4 sm:px-6">
-      <div class="dashboard-top-row mb-6 grid gap-4 lg:grid-cols-12">
-        <div class="card border bg-gradient-to-br from-purple-800/30 via-purple-900/20 to-fuchsia-900/20 shadow-sm backdrop-blur lg:col-span-4">
+      <!-- KPI Cards Section -->
+      <div class="dashboard-top-row mb-6 grid gap-4 lg:grid-cols-2">
+        <div class="card border bg-gradient-to-br from-purple-800/30 via-purple-900/20 to-fuchsia-900/20 shadow-sm backdrop-blur lg:col-span-1">
           <div class="card-body gap-4">
             <div class="flex items-start justify-between">
               <div>
@@ -291,81 +226,18 @@ onMounted(() => {
             </div>
           </div>
         </div>
-
-        <div class="lg:col-span-8 kpi-grid">
-          <div
-            v-for="k in kpis"
-            :key="k.id"
-            class="relative flex flex-col overflow-hidden rounded-[26px] p-4 md:p-5 lg:p-6 2xl:p-7 shadow-sm ring-1 ring-white/5 transition backdrop-blur"
-            :class="[
-              k.variant === 'gradient'
-                ? 'bg-gradient-to-br from-purple-600 via-fuchsia-600 to-indigo-600 text-white kpi-gradient'
-                : 'bg-base-200/20 hover:bg-base-200/30',
-            ]"
-          >
-            <div v-if="k.variant === 'gradient'" class="pointer-events-none absolute inset-0 opacity-40">
-              <div class="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-fuchsia-400/20 blur-2xl" />
-              <div class="absolute left-1/3 top-1/2 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-300/10 blur-2xl" />
-            </div>
-            <div class="relative z-10 flex h-full flex-col gap-2">
-              <div class="flex items-start gap-2">
-                <h3 class="text-[13px] font-medium tracking-wide uppercase opacity-80 leading-tight line-clamp-2 pr-1">
-                  {{ k.title }}
-                </h3>
-                <span
-                  class="kpi-delta ml-auto inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-medium leading-none backdrop-blur shrink-0"
-                  :class="deltaPillClasses(k)"
-                >
-                  <Icon :name="deltaIcon(k)" class="inline size-3" />
-                  {{ deltaText(k) }}
-                </span>
-              </div>
-              <div class="flex flex-1 items-end justify-between gap-2">
-                <div>
-                  <div class="kpi-value font-semibold tracking-tight" :class="k.variant === 'gradient' ? 'text-white' : k.accent">
-                    {{ formatValue(k) }}
-                  </div>
-                  <div class="mt-1 text-[11px] opacity-60">
-                    {{ baselineLabel(k) }}
-                  </div>
-                </div>
-                <div v-if="k.sparkline" class="sparkline relative h-14 w-20 sm:h-16 sm:w-24">
-                  <svg viewBox="0 0 100 40" class="absolute inset-0 h-full w-full overflow-visible">
-                    <defs>
-                      <linearGradient
-                        :id="`grad-${k.id}`"
-                        x1="0%"
-                        y1="0%"
-                        x2="0%"
-                        y2="100%"
-                      >
-                        <stop
-                          offset="0%"
-                          stop-color="#a855f7"
-                          stop-opacity="0.8"
-                        />
-                        <stop
-                          offset="100%"
-                          stop-color="#a855f7"
-                          stop-opacity="0"
-                        />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      :d="sparkPath(k.sparkline)"
-                      fill="none"
-                      stroke="#c084fc"
-                      stroke-width="2"
-                      stroke-linejoin="round"
-                      stroke-linecap="round"
-                    />
-                    <path :d="`${sparkPath(k.sparkline)} L100 40 L0 40 Z`" :fill="`url(#grad-${k.id})`" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Card
+          padding="p-6"
+          border-radius="rounded-2xl"
+          shadow="shadow-xl"
+          layout="vertical"
+          accent-color="text-fuchsia-300"
+          :show-sparkline="true"
+          sparkline-color="#c084fc"
+          grid-columns="repeat(3, 1fr)"
+          gap="1.2rem"
+          :content="exampleKpis"
+        />
       </div>
 
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -551,12 +423,6 @@ onMounted(() => {
 <style scoped>
 /* Your component styles go here */
 /* A few styles to make the kpi-grid and dashboard-grid responsive */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.25rem; /* 20px */
-}
-
 .dashboard-card {
   border-color: rgba(255, 255, 255, 0.07);
 }

@@ -112,11 +112,13 @@ function toggleRecording() {
             @click="closeMobileNav"
           >
             <NuxtImg
-              src="/img/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11.png"
+              src="v1762635825/Gemini_Generated_Image_ehw9dgehw9dgehw9-removebg-preview11_igmqeu.png"
               alt="Kali-E Logo"
-              width="34"
-              height="34"
-              class="w-8 h-8 object-contain"
+              width="40"
+              height="40"
+              class="w-9 h-9 sm:w-10 sm:h-10 object-contain select-none"
+              loading="eager"
+              decoding="async"
             />
             <span class="font-semibold tracking-tight">Kali‑E</span>
           </NuxtLink>
@@ -210,7 +212,7 @@ function toggleRecording() {
       </div>
     </transition>
     <button
-      class="fixed bottom-8 left-1/2 z-30 inline-flex -translate-x-1/2 transform items-center gap-2 rounded-full border border-purple-400/50 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
+      class="fixed bottom-8 left-1/2 z-30 inline-flex -translate-x-1/2 transform items-center gap-2 rounded-full border border-purple-400/50 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 px-4 py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
       aria-label="Open ask widget"
       @click="toggleAskWidget"
     >

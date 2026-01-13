@@ -1,247 +1,61 @@
-# Intelligent Review System - Implementation Summary
+# AI Orchestration – Implementation Summary (current behavior)
 
-## Overview
+This document reflects what the AI worker does today, based on the code in `apps/ai`.
 
-This implementation enhances the background AI worker's review section to intelligently decide what to review, take comprehensive notes, and provide actionable feedback to the routing agent for better replanning when failures occur.
+## End-to-end flow
 
-## Problem Statement
+1) **Intake** (`interpret_request`): Natural language prompts become `OrchestrationRequest` objects; structured requests pass through unchanged.
+2) **Routing** (`route_request`): Chooses a workflow (`broadcast` when audience exists, caller-specified when provided, else `generic-task`). Working notes accumulate rationale.
+3) **Policy** (`policy_check`): Evaluates directives from Mongo-backed store (in-memory fallback). Can block or require human approval; adds tags and notes.
+4) **Memory** (`fetch_context`): Pulls snippets/relations from Graphiti when enabled; otherwise emits demo placeholders. Validates relevance.
+5) **Planning + reflection** (`plan_actions`, `agent_reflection`): Builds a small plan and a reflection summary for observability.
+6) **Plugin selection + render** (`select_plugin`, `render_payload`): Picks a plugin (metadata override > channel default > `demo-messaging`), renders a message/template.
+7) **Dispatch** (`execute_plugin`): Executes the chosen plugin. Bundled plugins: `demo-messaging` (simulated; aliases `demo`, `whatsapp`) and `resend-email` (real email when RESEND_* is set, otherwise dry-run).
+8) **Review loop** (`review_outcome`, `review_agent`): Sentinel categorizes issues, recommendations, and routing context. Review agent may RETRY (resets dispatch state, increments `retry_count`) or COMPLETE.
+9) **Memory update + finalize** (`update_memory`, `finalize`): Writes summaries back to Graphiti when enabled; marks status and emits completion.
 
-The original issue requested improvements to:
-1. Let an agent intelligently decide what to review
-2. Take notes for later use
-3. Send results back to the routing agent if something fails
-4. Enable a new plan to be made based on failures
+Async requests publish to Redis (`kali:agent.requests`); the orchestrator consumes, runs the graph, and publishes state to `kali:agent.status`. Sync requests run inline and return serialized state.
 
-## Solution Architecture
+## Key components
 
-### 1. Enhanced Data Models
+- **Orchestrator** (`src/services/orchestrator.py`): Manages the LangGraph instance, enqueue/run paths, Redis consumer loop, and state serialization.
+- **LangGraph** (`src/orchestration/graph.py`): Defines the state machine and stage transitions, including conditional edges for plugin dispatch and review retries.
+- **Reasoning helper** (`src/orchestration/reasoning.py`): Heuristic-first; can call an async LLM if configured. Handles interpretation, routing choice, planning, reflection, plugin choice, and payload generation.
+- **Policy engine** (`src/orchestration/policy.py`): Pulls directives from Mongo (or memory) and captures feedback directives from incoming requests.
+- **Memory service** (`src/orchestration/memory.py`): Graphiti-backed context fetch and memory updates; demo fallback when Graphiti is disabled.
+- **Review** (`src/orchestration/review.py`): Sentinel builds `ReviewFeedback` with issues, recommendations, and routing context; review agent decides RETRY/COMPLETE and carries context into reruns.
+- **Plugins** (`src/orchestration/plugins/*`): Registry pattern. Built-ins: `demo-messaging`, `resend-email` (Resend API with dry-run by default).
+- **Event bus** (`src/event_bus/redis_bus.py`): Thin Redis Pub/Sub wrapper used for async ingestion and status streaming.
 
-#### ReviewIssueCategory (Enum)
-Categories for intelligent issue classification:
-- `POLICY` - Policy violations or constraints
-- `PLUGIN` - Plugin execution failures
-- `CONTEXT` - Insufficient or irrelevant context
-- `PLANNING` - Planning or workflow issues
-- `EXECUTION` - Runtime execution errors
-- `VALIDATION` - Validation failures
-- `OTHER` - Uncategorized issues
+## Data that moves between stages
 
-#### ReviewIssue (Model)
-Detailed issue information:
-```python
-{
-    "category": ReviewIssueCategory,
-    "description": str,
-    "severity": str,  # low, medium, high, critical
-    "context": dict,  # Additional context for debugging
-    "actionable": bool  # Can this be fixed by retry?
-}
-```
+- `request`, `raw_prompt`, `request_hints`
+- `working_notes`, `interpretation_notes`, `retry_count`
+- `selected_workflow`, `planned_actions`, `analysis_summary`
+- `policy_decision`, `requires_human_approval`
+- `retrieved_context`, `context_validation`
+- `selected_plugin`, `rendered_message`, `plugin_result`
+- `review_feedback`, `review_action`, `review_notes`, `routing_context`
+- `memory_updates`
 
-#### ReviewNotes (Model)
-Comprehensive notes for routing agent:
-```python
-{
-    "workflow_stage": str,  # Where review occurred
-    "issues_found": List[ReviewIssue],
-    "successful_steps": List[str],  # What worked
-    "recommendations": List[str],  # What to try next
-    "routing_context": dict  # Specific hints for routing
-}
-```
+## Configuration highlights (env)
 
-### 2. Intelligent AgentSentinel
+- Redis (`REDIS_URL`, prefix/channel overrides)
+- LangGraph (`LANGGRAPH_CHECKPOINT_STORE`, `LANGGRAPH_CHECKPOINT_PATH`, `LANGGRAPH_MAX_CONCURRENCY`)
+- Graphiti (`GRAPHITI_ENABLED`, provider + Neo4j creds, group ID, build indices, search limits)
+- Mongo policy store (`MONGO_URI`, `MONGO_ENABLED`, collection/db names)
+- Resend email (`RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `RESEND_DEFAULT_RECIPIENT`, `RESEND_DELIVER`)
+- Review retries (`REVIEW_MAX_RETRIES`)
 
-The enhanced sentinel now:
+## Future refinements to consider
 
-**Analyzes Multiple Aspects:**
-- Plugin execution results
-- Planning completeness
-- Policy decisions
-- Context availability
-- Validation results
-- Execution errors
+- More plugins (SMS/WhatsApp proper, calendar, CRM)
+- Persistence-backed LangGraph checkpoints for resilience
+- Plugin reliability scoring and routing hints
+- Expanded telemetry for plans/retries and policy decisions
 
-**Categorizes Issues:**
-- Assigns appropriate category to each issue
-- Determines severity level
-- Marks issues as actionable or non-actionable
+## Security/observability notes
 
-**Tracks Success:**
-- Records successful workflow steps
-- Identifies what worked for future reference
-
-**Provides Recommendations:**
-- Suggests alternative approaches
-- Recommends specific actions for retry
-
-**Builds Routing Context:**
-- Failed plugins to avoid
-- Policy constraints to consider
-- Context gaps to address
-
-### 3. Smart ReviewAgent
-
-The enhanced review agent:
-
-**Analyzes Actionability:**
-- Separates actionable from non-actionable issues
-- Avoids retrying critical non-actionable issues
-- Considers issue severity in decisions
-
-**Provides Rich Feedback:**
-- Includes recommendations in messages
-- Logs routing context for observability
-- Explains why retry was chosen or avoided
-
-**Intelligent Retry Logic:**
-```python
-if critical_non_actionable_issues:
-    return COMPLETE  # Don't retry
-elif actionable_issues and retry_count < max_retries:
-    return RETRY  # Try again with context
-else:
-    return COMPLETE  # Max retries reached or no issues
-```
-
-### 4. Enhanced Routing with Context
-
-The route_request function now:
-
-**On Retry, Incorporates:**
-- Previous workflow stage
-- Successful steps (to avoid repeating)
-- Issue categories encountered
-- Review recommendations
-- Specific routing constraints (e.g., avoid plugins)
-- Policy constraints
-
-**Example Routing Notes on Retry:**
-```
-[Retry 1] Previous attempt completed at stage: reviewing
-Successful steps: Context retrieved, Plan created, Policy passed
-Issues encountered: plugin
-Recommendations: Consider retrying with different delivery channel
-Avoid plugin: email-plugin
-```
-
-## Usage Examples
-
-### Example 1: Plugin Failure with Retry
-
-**Initial Attempt:**
-```
-State: {
-    "plugin_result": {
-        "plugin_name": "email-plugin",
-        "failed": ["user@example.com"]
-    }
-}
-```
-
-**Review Feedback:**
-```
-{
-    "approved": false,
-    "detailed_issues": [{
-        "category": "plugin",
-        "description": "Plugin delivery failed for 1 recipient(s)",
-        "severity": "high",
-        "actionable": true
-    }],
-    "review_notes": {
-        "recommendations": ["Consider retrying with different delivery channel"],
-        "routing_context": {
-            "failed_plugin": "email-plugin",
-            "failed_recipients": ["user@example.com"]
-        }
-    }
-}
-```
-
-**Retry with Context:**
-- Routing agent receives notes about failed plugin
-- Can choose alternative delivery method
-- Knows which recipients failed
-
-### Example 2: Policy Constraint (No Retry)
-
-**State:**
-```
-{
-    "policy_decision": {
-        "requires_human": true,
-        "reason": "Sensitive content"
-    }
-}
-```
-
-**Review Feedback:**
-```
-{
-    "approved": false,
-    "detailed_issues": [{
-        "category": "policy",
-        "severity": "high",
-        "actionable": false  # Can't be fixed by retry
-    }]
-}
-```
-
-**Result:** Review agent escalates instead of retrying (non-actionable)
-
-## Testing
-
-### Unit Tests (7 tests)
-- Plugin failure detection and categorization
-- Empty plan detection
-- Successful step tracking
-- Policy constraint identification
-- Review agent using detailed feedback
-- Escalation of non-actionable issues
-- Low context detection
-
-### Integration Tests (2 tests)
-- End-to-end retry with routing context
-- Review notes passed to routing agent
-
-### All Tests Pass
-- 20 passed, 4 skipped (Redis tests)
-- No linting errors
-- No security vulnerabilities (CodeQL verified)
-
-## Benefits
-
-1. **Smarter Retries:** System learns from failures and makes better retry attempts
-2. **Better Observability:** Detailed categorization and logging helps debugging
-3. **Reduced Human Intervention:** Actionable issues are retried automatically
-4. **Context Preservation:** Successful steps recorded to avoid repeating
-5. **Policy Awareness:** Non-actionable constraints properly escalated
-6. **Recommendation System:** Routing agent gets specific guidance for replanning
-
-## Future Enhancements
-
-Potential improvements:
-1. Machine learning to predict best retry strategy
-2. Pattern analysis across multiple failures
-3. Automatic escalation routing rules
-4. Historical success rate tracking
-5. Plugin reliability scoring
-
-## Security Summary
-
-**CodeQL Analysis:** ✅ No vulnerabilities found
-- All changes reviewed for security issues
-- No new attack vectors introduced
-- Proper input validation maintained
-- No sensitive data exposure
-
-## Conclusion
-
-This implementation successfully addresses all requirements from the issue:
-- ✅ Agent intelligently decides what to review (via categorization)
-- ✅ Takes notes for later (ReviewNotes model)
-- ✅ Sends results to routing agent on failure (routing_context)
-- ✅ Enables new plan creation (enhanced route_request)
-
-The system is now significantly more intelligent about handling failures and provides actionable feedback for better decision-making on retries.
+- Policy directives and Graphiti credentials are read from env; Graphiti is disabled when credentials are incomplete.
+- Resend runs in dry-run unless explicitly enabled, reducing accidental sends during development.
+- Redis channels are namespaced; errors during async consumption are logged and surfaced on the status channel.
