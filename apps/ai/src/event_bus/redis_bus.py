@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator, Dict, Optional
 
 from redis.asyncio import Redis
 
-from src.config.settings import RedisSettings
+from config.settings import RedisSettings  # from apps/config
 
 logger = logging.getLogger(__name__)
 

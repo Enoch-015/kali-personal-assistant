@@ -7,14 +7,14 @@ from typing import Any, Dict, Optional
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import RedisError
 
-from src.config.settings import get_settings
+from config.settings import get_settings
 
 _async_redis_singleton: Optional[AsyncRedis] = None
 _EPHEMERAL_PREFIX = "ephemeral:v1:"
 
 
 async def _create_async_client() -> Optional[AsyncRedis]:
-    settings = get_settings()
+    settings = get_settings("ai")
     url = str(settings.redis_url)
 
     client = AsyncRedis.from_url(

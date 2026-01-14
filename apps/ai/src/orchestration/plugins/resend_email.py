@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import resend
 
-from src.config.settings import get_settings
+from config.settings import get_settings
 from src.orchestration.models import OrchestrationRequest, PluginDispatchResult
 from src.orchestration.plugins.base import BasePlugin, registry
 
@@ -95,7 +95,7 @@ class ResendEmailPlugin(BasePlugin):
         context: Dict[str, Any] | None = None,
     ) -> PluginDispatchResult:
         context = context or {}
-        settings = get_settings()
+        settings = get_settings("ai")
         resend_settings = settings.resend
         runtime = self._resolve_runtime_config(resend_settings)
 

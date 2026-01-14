@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { Component } from "vue";
 
-import { reactive } from "vue";
-
 import { AlertTriangle, Bell } from "lucide-vue-next";
+import { reactive } from "vue";
 
 /*************************************************
  * Events + Urgent Activity Overview Page

@@ -10,7 +10,7 @@ except Exception:  # pragma: no cover - dependency import guard
     MongoClient = None  # type: ignore
     Collection = None  # type: ignore
 
-from src.config.settings import get_settings
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ _client: Optional[MongoClient] = None
 
 
 def _connect() -> Optional[MongoClient]:
-    settings = get_settings()
+    settings = get_settings("ai")
     mongo_settings = getattr(settings, "mongo", None)
     if not mongo_settings or not mongo_settings.enabled:
         return None
@@ -49,7 +49,7 @@ def get_policy_collection() -> Optional[Collection]:
     client = get_mongo_client()
     if client is None or Collection is None:
         return None
-    settings = get_settings()
+    settings = get_settings("ai")
     mongo_settings = getattr(settings, "mongo", None)
     if not mongo_settings:
         return None

@@ -10,16 +10,15 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-from dotenv import load_dotenv
-
 AI_ROOT = Path(__file__).resolve().parents[1]
+APPS_ROOT = AI_ROOT.parent  # apps/ folder containing both ai/ and config/
+
 if str(AI_ROOT) not in sys.path:
     sys.path.insert(0, str(AI_ROOT))
+if str(APPS_ROOT) not in sys.path:
+    sys.path.insert(0, str(APPS_ROOT))
 
-# Ensure the app-local .env is loaded for downstream settings
-load_dotenv(AI_ROOT / ".env", override=False)
-
-from src.config.settings import get_settings
+from config.settings import get_settings
 from src.orchestration.graph import build_langgraph
 from src.orchestration.models import Audience, OrchestrationRequest
 from src.orchestration.plugins.demo import register_demo_plugin
@@ -164,7 +163,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list[str]] = None) -> None:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    settings = get_settings()
+    settings = get_settings("ai")  # Uses apps/config/.env + apps/ai/.env
     try:
         asyncio.run(_run_graph(args, settings))
     except KeyboardInterrupt:  # pragma: no cover - runtime convenience

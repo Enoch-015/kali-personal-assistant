@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from langgraph.checkpoint.memory import InMemorySaver
 
-from src.config.settings import Settings
+from config.settings import Settings
 from src.event_bus.redis_bus import RedisEventBus
 from src.orchestration.graph import build_langgraph
 from src.orchestration.models import (

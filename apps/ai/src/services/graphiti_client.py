@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
-from src.config.settings import Settings, get_settings
+from config.settings import Settings, get_settings
 
 try:  # pragma: no cover - optional dependency handling
     from graphiti_core import Graphiti as GraphitiSDK  # type: ignore[import-not-found]
@@ -46,7 +46,7 @@ class GraphitiClient:
     """Thin wrapper around the Graphiti SDK with graceful fallbacks."""
 
     def __init__(self, settings: Optional[Settings] = None) -> None:
-        self._settings = settings or get_settings()
+        self._settings = settings or get_settings("ai")
         self._enabled = GraphitiSDK is not None and self._settings.graphiti_enabled
         self._client: Optional[Any] = None
         self._lock = asyncio.Lock()

@@ -44,6 +44,11 @@ const envSchema = z.object({
     }, { message: "BETTER_AUTH_BASE_URL must be a valid absolute http(s) URL without inline comments" }),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional(),
+
+  // LiveKit configuration
+  LIVEKIT_API_KEY: z.string().optional(),
+  LIVEKIT_API_SECRET: z.string().optional(),
+  LIVEKIT_URL: z.string().default("ws://localhost:7880"),
 });
 
 export type Env = z.infer<typeof envSchema>;

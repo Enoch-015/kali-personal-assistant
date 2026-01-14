@@ -1,12 +1,19 @@
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Literal
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
-from src.config.settings import get_settings
+# Ensure apps/ folder is in path for config imports
+AI_ROOT = Path(__file__).resolve().parents[1]
+APPS_ROOT = AI_ROOT.parent  # apps/ folder containing both ai/ and config/
+if str(APPS_ROOT) not in sys.path:
+    sys.path.insert(0, str(APPS_ROOT))
+
+# Load settings with AI app's .env overlay on shared config
+from config.settings import get_settings
 from src.event_bus.redis_bus import RedisEventBus
 from src.orchestration.models import (
     GraphInvocationHints,
@@ -18,13 +25,8 @@ from src.services.orchestrator import AgentOrchestrator, bootstrap_orchestrator,
 
 logger = logging.getLogger(__name__)
 
-# Load environment variables from the .env file in the apps/ai directory so the
-# FastAPI server picks up the same configuration as other tooling.
-AI_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(AI_ROOT / ".env", override=False)
-
 async def startup_event() -> None:
-    settings = get_settings()
+    settings = get_settings("ai")  # Uses apps/config/.env + apps/ai/.env
     app.state.settings = settings
     event_bus = RedisEventBus(settings.redis)
     app.state.event_bus = event_bus

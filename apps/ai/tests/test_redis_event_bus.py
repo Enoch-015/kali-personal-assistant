@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from src.config.settings import RedisSettings
+from config.settings import RedisSettings
 from src.event_bus.redis_bus import RedisEventBus
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from src.config.settings import get_settings
+from config.settings import get_settings
 from src.orchestration.reasoning import ReviewAssessment, get_reasoning_agent
 
 from .models import (
@@ -247,7 +247,7 @@ class ReviewAgent:
     """Enhanced governance layer that intelligently evaluates failures and provides context for replanning."""
 
     def __init__(self, max_retries: int | None = None) -> None:
-        settings = get_settings()
+        settings = get_settings("ai")
         configured = max_retries if max_retries is not None else getattr(settings, "review_max_retries", 1)
         self._max_retries = max(0, configured)
         self._logger = logging.getLogger(__name__)

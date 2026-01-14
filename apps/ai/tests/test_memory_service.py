@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.config.settings import GraphitiSettings
+from config.settings import GraphitiSettings
 from src.orchestration.memory import MemoryService
 from src.orchestration.models import OrchestrationRequest
 from src.services import graphiti_client as graphiti_module
