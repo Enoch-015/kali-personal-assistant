@@ -14,7 +14,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   // Check for any auth (session or ephemeral key)
-  const auth = getAnyAuth(event);
+  const auth = await getAnyAuth(event);
 
   if (!auth) {
     throw createError({

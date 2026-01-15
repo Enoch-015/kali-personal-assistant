@@ -6,9 +6,9 @@
  */
 import { eq } from "drizzle-orm";
 
-import { auth } from "../../../../lib/auth";
-import db from "../../../../lib/db";
-import { mcp } from "../../../../lib/db/schema";
+import { auth } from "../../../lib/auth";
+import db from "../../../lib/db";
+import { mcp } from "../../../lib/db/schema";
 
 export default defineEventHandler(async (event) => {
   // Require session auth for admin operations

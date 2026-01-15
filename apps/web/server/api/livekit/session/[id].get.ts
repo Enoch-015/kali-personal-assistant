@@ -11,7 +11,7 @@ import { livekitSession } from "../../../../lib/db/schema";
 import { getAnyAuth } from "../../../utils/ephemeral-auth";
 
 export default defineEventHandler(async (event) => {
-  const auth = getAnyAuth(event);
+  const auth = await getAnyAuth(event);
 
   if (!auth) {
     throw createError({

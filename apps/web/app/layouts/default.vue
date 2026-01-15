@@ -6,6 +6,12 @@ const askWidgetOpen = ref(false);
 const askRecording = ref(false);
 const recordingLabel = computed(() => askRecording.value ? "Listening..." : "Ready to listen");
 
+// LiveKit widget state
+const livekitWidgetOpen = ref(false);
+
+// Use the LiveKit composable
+const { isConnected: livekitConnected } = useLiveKit();
+
 // Single source of truth for navigation items
 const navItems = [
   { to: "/", icon: "tabler-home", label: "Voice Assistant" },
@@ -30,6 +36,22 @@ function toggleAskWidget() {
 }
 function toggleRecording() {
   askRecording.value = !askRecording.value;
+}
+
+function toggleLivekitWidget() {
+  livekitWidgetOpen.value = !livekitWidgetOpen.value;
+}
+
+function handleLivekitConnected(_roomName: string, _sessionId: string) {
+  // Room connected - can add analytics or notifications here
+}
+
+function handleLivekitDisconnected() {
+  // Widget stays open but shows join screen
+}
+
+function handleLivekitError(error: string) {
+  console.error("LiveKit error:", error);
 }
 </script>
 
@@ -211,6 +233,53 @@ function toggleRecording() {
         </div>
       </div>
     </transition>
+
+    <!-- LiveKit Video Widget -->
+    <transition name="fade">
+      <div
+        v-if="livekitWidgetOpen"
+        class="fixed bottom-24 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-base-100/95 shadow-xl backdrop-blur overflow-hidden"
+      >
+        <div class="flex items-center justify-between p-3 border-b border-base-200/40">
+          <div class="flex items-center gap-2">
+            <Icon name="tabler-video" class="text-lg text-purple-400" />
+            <span class="text-sm font-semibold">Video Session</span>
+            <span
+              v-if="livekitConnected"
+              class="inline-flex items-center gap-1 text-xs text-success"
+            >
+              <span class="w-2 h-2 bg-success rounded-full animate-pulse" />
+              Connected
+            </span>
+          </div>
+          <button
+            class="btn btn-ghost btn-xs"
+            aria-label="Close video widget"
+            @click="toggleLivekitWidget"
+          >
+            <Icon name="tabler-x" />
+          </button>
+        </div>
+        <VideoRoom
+          :show-controls="true"
+          @connected="handleLivekitConnected"
+          @disconnected="handleLivekitDisconnected"
+          @error="handleLivekitError"
+        />
+      </div>
+    </transition>
+
+    <!-- LiveKit Widget Toggle Button -->
+    <button
+      class="fixed bottom-8 right-4 z-30 inline-flex items-center justify-center w-12 h-12 rounded-full border border-purple-400/50 bg-gradient-to-r from-indigo-600 via-purple-500 to-fuchsia-500 text-white shadow-lg transition hover:shadow-xl"
+      :class="{ 'ring-2 ring-success ring-offset-2 ring-offset-base-100': livekitConnected }"
+      aria-label="Toggle video session"
+      @click="toggleLivekitWidget"
+    >
+      <Icon :name="livekitConnected ? 'tabler-video' : 'tabler-video-plus'" class="text-xl" />
+    </button>
+
+    <!-- Ask Me Anything Button -->
     <button
       class="fixed bottom-8 left-1/2 z-30 inline-flex -translate-x-1/2 transform items-center gap-2 rounded-full border border-purple-400/50 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 px-4 py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
       aria-label="Open ask widget"

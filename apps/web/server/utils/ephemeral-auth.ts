@@ -1,5 +1,7 @@
 import type { H3Event } from "h3";
 
+import { auth } from "../../lib/auth";
+
 export type EphemeralAuthContext = {
   userId: string | null;
   keyId: string;
@@ -70,14 +72,14 @@ export function getEphemeralAuth(event: H3Event): EphemeralAuthContext | null {
  * @param event - The H3 event
  * @returns Object with auth type and user ID, or null if not authenticated
  */
-export function getAnyAuth(event: H3Event): {
+export async function getAnyAuth(event: H3Event): Promise<{
   type: "session" | "ephemeral";
   userId: string;
   context: EphemeralAuthContext | { session: unknown };
-} | null {
+} | null> {
   // Check ephemeral auth first (it's already processed by middleware)
   const ephemeralAuth = getEphemeralAuth(event);
-  if (ephemeralAuth) {
+  if (ephemeralAuth?.userId) {
     return {
       type: "ephemeral",
       userId: ephemeralAuth.userId,
@@ -85,14 +87,22 @@ export function getAnyAuth(event: H3Event): {
     };
   }
 
-  // Check session auth (from better-auth)
-  const session = event.context.session as { user?: { id: string } } | undefined;
-  if (session?.user?.id) {
-    return {
-      type: "session",
-      userId: session.user.id,
-      context: { session },
-    };
+  // Check session auth (from better-auth) - need to call the API
+  try {
+    const session = await auth.api.getSession({
+      headers: event.headers,
+    });
+
+    if (session?.user?.id) {
+      return {
+        type: "session",
+        userId: session.user.id,
+        context: { session },
+      };
+    }
+  }
+  catch {
+    // Session retrieval failed, continue to return null
   }
 
   return null;
