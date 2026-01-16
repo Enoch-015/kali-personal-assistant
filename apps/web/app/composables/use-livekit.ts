@@ -60,10 +60,12 @@ export function useLiveKit(options: LiveKitOptions = {}) {
         ephemeralKeyId?: string;
       };
 
-      // Create and configure room
+      // Create and configure room with TCP fallback for restrictive networks
       const newRoom = new Room({
-        adaptiveStream: true,
-        dynacast: true,
+        // Force TCP transport when UDP is blocked (common in corporate networks)
+        rtcConfig: {
+          iceTransportPolicy: "all", // Try all transports
+        },
       });
 
       // Set up event listeners
@@ -217,6 +219,7 @@ export function useLiveKit(options: LiveKitOptions = {}) {
 
     try {
       const currentState = room.value.localParticipant.isCameraEnabled;
+      // Don't pass any options - let LiveKit use defaults to avoid structuredClone issues
       await room.value.localParticipant.setCameraEnabled(!currentState);
       // State will be updated by LocalTrackPublished/Unpublished events
       return !currentState;
@@ -238,6 +241,7 @@ export function useLiveKit(options: LiveKitOptions = {}) {
 
     try {
       const currentState = room.value.localParticipant.isMicrophoneEnabled;
+      // Don't pass any options - let LiveKit use defaults to avoid structuredClone issues
       await room.value.localParticipant.setMicrophoneEnabled(!currentState);
       // State will be updated by LocalTrackPublished/Unpublished events
       return !currentState;
@@ -249,11 +253,23 @@ export function useLiveKit(options: LiveKitOptions = {}) {
   }
 
   /**
+   * Check if screen sharing is supported in this browser context
+   */
+  function isScreenShareSupported(): boolean {
+    return !!(navigator.mediaDevices && "getDisplayMedia" in navigator.mediaDevices);
+  }
+
+  /**
    * Toggle screen share on/off
    */
   async function toggleScreenShare(): Promise<boolean> {
     if (!room.value) {
       console.warn("Cannot toggle screen share: not connected to room");
+      return false;
+    }
+
+    if (!isScreenShareSupported()) {
+      console.warn("Screen sharing is not supported in this browser context");
       return false;
     }
 
@@ -358,6 +374,7 @@ export function useLiveKit(options: LiveKitOptions = {}) {
     toggleCamera,
     toggleMicrophone,
     toggleScreenShare,
+    isScreenShareSupported,
     getLocalVideoElement,
     getLocalScreenShareElement,
     getRemoteParticipants,

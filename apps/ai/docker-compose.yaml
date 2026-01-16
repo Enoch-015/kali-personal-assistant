@@ -88,16 +88,15 @@ services:
     image: livekit/livekit-server
     container_name: kali-livekit
     environment:
-      # API key:secret format (space after colon is required!)
+      # API key: secret format (MUST have space after colon!)
       LIVEKIT_KEYS: "devkey: secret"
-      # Use specific node IP for local network
-      LIVEKIT_NODE_IP: "10.141.169.36"
     ports:
       - "7880:7880"   # Signaling / WebSocket
       - "7881:7881"   # TCP fallback
       - "7882-7932:7882-7932/udp"  # WebRTC media (smaller range)
     restart: unless-stopped
-    command: --dev --bind 0.0.0.0 --node-ip 10.141.169.36
+    # Dev mode with TCP fallback enabled for Codespaces
+    command: --dev --bind 0.0.0.0
 
 # ------------------------
 # Named Volumes

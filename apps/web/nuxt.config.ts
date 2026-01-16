@@ -26,7 +26,16 @@ export default defineNuxtConfig({
     plugins: [
       tailwindcss(),
     ],
-
+    // Fix HMR (Hot Module Replacement) WebSocket issues in GitHub Codespaces
+    server: {
+      hmr: process.env.CODESPACE_NAME
+        ? {
+            protocol: "wss",
+            clientPort: 443,
+            path: "/_nuxt/",
+          }
+        : true,
+    },
   },
   shadcn: {
     /**

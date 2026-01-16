@@ -41,6 +41,7 @@ const {
   toggleCamera,
   toggleMicrophone,
   toggleScreenShare,
+  isScreenShareSupported,
   getLocalVideoElement,
 } = useLiveKit({
   onTrackSubscribed: (track: RemoteTrack, participant: RemoteParticipant) => {
@@ -294,6 +295,7 @@ defineExpose({
         </button>
 
         <button
+          v-if="isScreenShareSupported()"
           class="btn btn-sm flex-1 min-w-[100px] gap-1"
           :class="isScreenShareEnabled ? 'btn-error' : 'btn-ghost'"
           @click="toggleScreenShare"
@@ -301,6 +303,19 @@ defineExpose({
           <Icon :name="isScreenShareEnabled ? 'tabler-screen-share' : 'tabler-screen-share-off'" class="text-base" />
           <span class="hidden xs:inline">{{ isScreenShareEnabled ? "Stop" : "Share" }}</span>
         </button>
+        <div
+          v-else
+          class="tooltip tooltip-top flex-1 min-w-[100px]"
+          data-tip="Screen sharing not supported on this device"
+        >
+          <button
+            class="btn btn-sm btn-ghost btn-disabled w-full gap-1 opacity-50"
+            disabled
+          >
+            <Icon name="tabler-screen-share-off" class="text-base" />
+            <span class="hidden xs:inline">Share</span>
+          </button>
+        </div>
       </div>
 
       <!-- Status Indicators -->

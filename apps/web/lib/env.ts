@@ -49,6 +49,8 @@ const envSchema = z.object({
   LIVEKIT_API_KEY: z.string().optional(),
   LIVEKIT_API_SECRET: z.string().optional(),
   LIVEKIT_URL: z.string().default("ws://localhost:7880"),
+  // Server-side URL for LiveKit API calls (use localhost in dev containers)
+  LIVEKIT_SERVER_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

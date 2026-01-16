@@ -7,9 +7,22 @@ import env from "../../lib/env";
 // Configuration
 // ============================================================
 
+/**
+ * Convert WebSocket URL to HTTP URL for API calls
+ */
+function getHttpUrlFromWs(wsUrl: string): string {
+  return wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
+}
+
 const LIVEKIT_API_KEY = env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = env.LIVEKIT_API_SECRET;
 const LIVEKIT_URL = env.LIVEKIT_URL || "ws://localhost:7880";
+// Server-side URL for API calls (defaults to converting WebSocket URL to HTTP)
+const LIVEKIT_SERVER_URL = env.LIVEKIT_SERVER_URL || getHttpUrlFromWs(LIVEKIT_URL);
+
+// Log the URLs being used for debugging
+console.log("[LiveKit] Client URL:", LIVEKIT_URL);
+console.log("[LiveKit] Server URL:", LIVEKIT_SERVER_URL);
 
 // ============================================================
 // Types
@@ -24,7 +37,7 @@ export type RoomInfo = {
 };
 
 export type TokenMetadata = {
-  participant: string;
+  participant: string;   
   ephemeralKeyId?: string;
   userId?: string;
   sessionId?: string;
@@ -71,10 +84,10 @@ function generateRoomName(existing?: Set<string>): string {
 }
 
 /**
- * Get HTTP URL from WebSocket URL for API calls
+ * Get HTTP URL for server-side API calls
  */
-function getHttpUrl(wsUrl: string): string {
-  return wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
+function getHttpUrl(): string {
+  return LIVEKIT_SERVER_URL;
 }
 
 /**
@@ -106,7 +119,7 @@ export async function generateUniqueRoomName(): Promise<string> {
 
   try {
     const roomService = new RoomServiceClient(
-      getHttpUrl(LIVEKIT_URL),
+      getHttpUrl(),
       LIVEKIT_API_KEY!,
       LIVEKIT_API_SECRET!,
     );
@@ -173,7 +186,7 @@ export async function createRoom(
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
@@ -203,7 +216,7 @@ export async function listRooms(): Promise<RoomInfo[]> {
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
@@ -236,7 +249,7 @@ export async function deleteRoom(roomName: string): Promise<void> {
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
@@ -256,7 +269,7 @@ export async function updateRoomMetadata(
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
@@ -277,7 +290,7 @@ export async function listParticipants(roomName: string): Promise<unknown[]> {
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
@@ -297,7 +310,7 @@ export async function removeParticipant(
   }
 
   const roomService = new RoomServiceClient(
-    getHttpUrl(LIVEKIT_URL),
+    getHttpUrl(),
     LIVEKIT_API_KEY!,
     LIVEKIT_API_SECRET!,
   );
