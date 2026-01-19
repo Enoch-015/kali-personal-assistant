@@ -98,6 +98,36 @@ services:
     # Dev mode with TCP fallback enabled for Codespaces
     command: --dev --bind 0.0.0.0
 
+  # ------------------------
+  # Vault
+  # ------------------------
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault-dev
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: myroot
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - vault-network
+
+  # Optional: Vault UI (if you want a web interface)
+  vault-ui:
+    image: djenriquez/vault-ui:latest
+    container_name: vault-ui
+    ports:
+      - "8000:8000"
+    environment:
+      VAULT_URL_DEFAULT: http://vault:8200
+      VAULT_AUTH_DEFAULT: TOKEN
+    depends_on:
+      - vault
+    networks:
+      - vault-network
+
 # ------------------------
 # Named Volumes
 # ------------------------
@@ -108,3 +138,10 @@ volumes:
   neo4j_import:
   neo4j_plugins:
   mongo_data:
+
+# ------------------------
+# Networks
+# ------------------------
+networks:
+  vault-network:
+    driver: bridge
