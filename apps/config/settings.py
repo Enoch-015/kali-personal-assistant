@@ -30,6 +30,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Import all settings modules
 from .graphiti_settings import GraphitiSettings
 from .langgraph_settings import LangGraphSettings
+from .livekit_settings import LiveKitSettings
 from .mongo_settings import MongoSettings
 from .redis_settings import RedisSettings
 from .resend_settings import ResendSettings
@@ -43,6 +44,7 @@ __all__ = [
     "ResendSettings",
     "LangGraphSettings",
     "GraphitiSettings",
+    "LiveKitSettings",
     "get_settings",
     "clear_settings_cache",
 ]
@@ -97,6 +99,7 @@ class Settings(BaseSettings):
     resend: ResendSettings = Field(default_factory=ResendSettings)
     langgraph: LangGraphSettings = Field(default_factory=LangGraphSettings)
     graphiti: GraphitiSettings = Field(default_factory=GraphitiSettings)
+    livekit: LiveKitSettings = Field(default_factory=LiveKitSettings)
     
     # Override fields
     redis_url_override: Optional[RedisDsn] = Field(
@@ -145,6 +148,15 @@ class Settings(BaseSettings):
             graphiti_update["enabled"] = False
         if graphiti_update:
             self.graphiti = self.graphiti.model_copy(update=graphiti_update)
+
+        # Apply LiveKit env overrides
+        livekit_env_overrides = self._extract_livekit_env_overrides()
+        if livekit_env_overrides:
+            self.livekit = self.livekit.model_copy(update=livekit_env_overrides)
+
+        # Auto-disable LiveKit if no credentials
+        if self.livekit.enabled and not self.livekit.has_credentials:
+            self.livekit = self.livekit.model_copy(update={"enabled": False})
             
         return self
 
@@ -159,6 +171,21 @@ class Settings(BaseSettings):
     @property
     def graphiti_enabled(self) -> bool:
         return self.graphiti.enabled and self.graphiti.has_credentials
+
+    @property
+    def livekit_enabled(self) -> bool:
+        """Check if LiveKit is enabled and has valid credentials."""
+        return self.livekit.enabled and self.livekit.has_credentials
+
+    @property
+    def livekit_url(self) -> str:
+        """Get the LiveKit WebSocket URL for client connections."""
+        return self.livekit.url
+
+    @property
+    def livekit_http_url(self) -> str:
+        """Get the LiveKit HTTP URL for server-side API calls."""
+        return self.livekit.http_url
 
     # ============================================================
     # Environment Override Extraction
@@ -267,6 +294,35 @@ class Settings(BaseSettings):
             "mongodb_policies_collection": ("policies_collection", coerce_str),
             "mongo_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
             "mongodb_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
+        }
+
+        return self._extract_env_overrides(extras, mapping)
+
+    def _extract_livekit_env_overrides(self) -> dict[str, Any]:
+        """Extract LiveKit settings from environment variables and extras."""
+        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
+
+        mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
+            # Core settings
+            "livekit_enabled": ("enabled", coerce_bool),
+            "livekit_url": ("url", coerce_str),
+            "livekit_server_url": ("server_url", coerce_str),
+            "livekit_api_key": ("api_key", coerce_str),
+            "livekit_api_secret": ("api_secret", coerce_str),
+            # AI Provider keys
+            "livekit_gemini_api_key": ("gemini_api_key", coerce_str),
+            "livekit_openai_api_key": ("openai_api_key", coerce_str),
+            "livekit_deepgram_api_key": ("deepgram_api_key", coerce_str),
+            "livekit_azure_api_key": ("azure_api_key", coerce_str),
+            "livekit_azure_region": ("azure_region", coerce_str),
+            # Model settings
+            "livekit_deepgram_model": ("deepgram_model", coerce_str),
+            "livekit_azure_tts_voice": ("azure_tts_voice", coerce_str),
+            "livekit_openai_model": ("openai_model", coerce_str),
+            "livekit_gemini_model": ("gemini_model", coerce_str),
+            # Room settings
+            "livekit_room_empty_timeout": ("room_empty_timeout", coerce_int),
+            "livekit_room_max_participants": ("room_max_participants", coerce_int),
         }
 
         return self._extract_env_overrides(extras, mapping)

@@ -15,6 +15,7 @@ from .settings import (
     ResendSettings,
     LangGraphSettings,
     GraphitiSettings,
+    LiveKitSettings,
     get_settings,
     clear_settings_cache,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "ResendSettings",
     "LangGraphSettings",
     "GraphitiSettings",
+    "LiveKitSettings",
     "get_settings",
     "clear_settings_cache",
 ]

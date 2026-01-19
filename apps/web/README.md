@@ -2,6 +2,7 @@
 
 Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
 
+
 ## Setup
 
 Make sure to install dependencies:
@@ -70,6 +71,22 @@ yarn preview
 
 # bun
 bun run preview
+```
+
+Installing vault cli
+
+```bash
+# macos
+brew tap hashicorp/tap
+brew install hashicorp/tap/vault
+
+# Ubuntu
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install vault
+
+# windows
+choco install vault
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

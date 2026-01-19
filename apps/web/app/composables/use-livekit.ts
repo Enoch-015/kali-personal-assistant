@@ -60,11 +60,19 @@ export function useLiveKit(options: LiveKitOptions = {}) {
         ephemeralKeyId?: string;
       };
 
-      // Create and configure room with TCP fallback for restrictive networks
+      // Create and configure room optimized for Codespaces/remote environments
       const newRoom = new Room({
-        // Force TCP transport when UDP is blocked (common in corporate networks)
+        // Adaptive streaming helps with variable network conditions
+        adaptiveStream: true,
+        // Dynacast reduces bandwidth by only sending video when subscribed
+        dynacast: true,
+        // Video codec preferences for better performance
+        videoCaptureDefaults: {
+          resolution: { width: 640, height: 480, frameRate: 24 }, // Lower resolution for smoother streaming
+        },
+        // Force TCP transport when UDP is blocked
         rtcConfig: {
-          iceTransportPolicy: "all", // Try all transports
+          iceTransportPolicy: "all",
         },
       });
 
