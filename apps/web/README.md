@@ -87,6 +87,11 @@ sudo apt update && sudo apt install vault
 
 # windows
 choco install vault
+
+
+# Export config
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='myroot'
 ```
 
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
