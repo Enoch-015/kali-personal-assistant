@@ -2,7 +2,6 @@
 
 Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
 
-
 ## Setup
 
 Make sure to install dependencies:
@@ -87,7 +86,6 @@ sudo apt update && sudo apt install vault
 
 # windows
 choco install vault
-
 
 # Export config
 export VAULT_ADDR='http://127.0.0.1:8200'

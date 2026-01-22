@@ -17,13 +17,13 @@ type StatusKey = ServiceStatus["status"];
 const serviceStatuses = reactive<ServiceStatus[]>([
   {
     id: "dialogue",
-    name: "Voice Orchestrator",
+    name: "Dialogue Orchestrator",
     status: "online",
     latency: 182,
     target: 220,
     latencyDelta: -18,
     icon: "tabler-navigation",
-    trend: [242, 235, 248, 228, 241, 219, 232, 215, 226, 208, 221, 195, 214, 188, 205, 192, 198, 178, 190, 182],
+    trend: [230, 224, 218, 210, 204, 192, 182],
   },
   {
     id: "memory",
@@ -33,7 +33,7 @@ const serviceStatuses = reactive<ServiceStatus[]>([
     target: 350,
     latencyDelta: 60,
     icon: "tabler-database-cog",
-    trend: [325, 338, 320, 355, 342, 368, 351, 375, 362, 388, 371, 395, 378, 402, 385, 398, 392, 415, 405, 410],
+    trend: [340, 352, 365, 376, 388, 402, 410],
   },
   {
     id: "relay",
@@ -43,7 +43,7 @@ const serviceStatuses = reactive<ServiceStatus[]>([
     target: 120,
     latencyDelta: -12,
     icon: "tabler-broadcast",
-    trend: [128, 118, 125, 115, 122, 108, 118, 105, 112, 102, 108, 98, 105, 92, 102, 88, 98, 92, 88, 95],
+    trend: [118, 112, 109, 106, 102, 98, 95],
   },
   {
     id: "redis",
@@ -53,7 +53,7 @@ const serviceStatuses = reactive<ServiceStatus[]>([
     target: 160,
     latencyDelta: -14,
     icon: "tabler-graph",
-    trend: [178, 165, 172, 158, 168, 152, 162, 148, 158, 142, 152, 138, 148, 135, 145, 128, 142, 125, 138, 132],
+    trend: [168, 162, 155, 148, 142, 136, 132],
   },
 ]);
 
@@ -91,13 +91,44 @@ const overallHealth = computed(() => {
   const offline = serviceStatuses.filter(svc => svc.status === "offline").length;
   const degraded = serviceStatuses.filter(svc => svc.status === "degraded").length;
   if (offline > 0)
-    return { label: "Disrupted", tone: "text-rose-400" };
+    return { label: "Disrupted", tone: "badge-error" };
   if (degraded > 1)
-    return { label: "Attention", tone: "text-amber-400" };
+    return { label: "Attention", tone: "badge-warning" };
   if (degraded === 1)
-    return { label: "Watching", tone: "text-amber-400" };
-  return { label: "Optimal", tone: "text-emerald-400" };
+    return { label: "Watching", tone: "badge-warning" };
+  return { label: "Optimal", tone: "badge-success" };
 });
+
+function statusBadgeClass(status: StatusKey) {
+  return statusChipMeta[status].badge;
+}
+function statusLabel(status: StatusKey) {
+  return statusChipMeta[status].label;
+}
+function latencyDeltaClass(svc: ServiceStatus) {
+  return svc.latencyDelta <= 0 ? "text-emerald-300" : "text-amber-300";
+}
+function latencyDeltaText(svc: ServiceStatus) {
+  if (svc.latencyDelta === 0)
+    return "On target";
+  const sign = svc.latencyDelta > 0 ? "+" : "-";
+  return `${sign}${Math.abs(svc.latencyDelta)}ms vs target`;
+}
+
+function sparkPath(points: number[]) {
+  if (!points.length)
+    return "";
+  const max = Math.max(...points);
+  const min = Math.min(...points);
+  const range = max - min || 1;
+  return points
+    .map((value, index) => {
+      const x = (index / (points.length - 1)) * 100;
+      const y = 40 - ((value - min) / range) * 30 - 5;
+      return `${index === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
 
 type HealthSignal = {
   id: string;
@@ -215,8 +246,8 @@ function incidentSeverityClass(severity: Incident["severity"]) {
         </div>
       </header>
 
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-12">
-        <section class="border col-span-2 md:col-span-3 shadow-sm bg-base-200/10 backdrop-blur lg:col-span-12">
+      <div class="grid auto-rows-[minmax(180px,auto)] gap-5 lg:grid-cols-12">
+        <section class="card col-span-12 border shadow-sm bg-base-200/10 backdrop-blur lg:col-span-8">
           <div class="card-body gap-4">
             <div class="flex items-center justify-between">
               <h2 class="font-semibold flex items-center gap-2">
@@ -237,20 +268,90 @@ function incidentSeverityClass(severity: Incident["severity"]) {
                 <span class="uppercase tracking-wide opacity-70">{{ chip.label }}</span>
               </span>
             </div>
-            <Card
-              class="responsive-grid-card"
-              variant="service-bar"
-              :content="serviceStatuses"
-              grid-columns="repeat(4, 1fr)"
-              padding="p-10"
-              border-radius="rounded-xl"
-              shadow="shadow-none"
-            />
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 ">
+            <div class="grid gap-3 md:grid-cols-2">
+              <article
+                v-for="svc in serviceStatuses"
+                :key="svc.id"
+                class="flex h-full flex-col gap-3 rounded-xl border border-base-200/40 bg-base-100/15 p-3 text-sm"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="rounded-lg bg-base-300/40 p-2">
+                    <Icon :name="svc.icon" class="text-purple-200" />
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-medium leading-tight">
+                      {{ svc.name }}
+                    </p>
+                    <span class="badge badge-ghost badge-xs" :class="statusBadgeClass(svc.status)">
+                      {{ statusLabel(svc.status) }}
+                    </span>
+                  </div>
+                  <div class="ml-auto text-right">
+                    <p class="text-xs opacity-60">
+                      Target {{ svc.target }}ms
+                    </p>
+                    <p class="font-semibold" :class="latencyDeltaClass(svc)">
+                      {{ svc.latency }}ms · {{ latencyDeltaText(svc) }}
+                    </p>
+                  </div>
+                </div>
+                <div class="mt-auto h-14 w-full relative">
+                  <svg
+                    v-if="svc.trend?.length"
+                    viewBox="0 0 100 40"
+                    class="absolute inset-0 h-full w-full overflow-visible"
+                  >
+                    <defs>
+                      <linearGradient
+                        :id="`svc-grad-${svc.id}`"
+                        x1="0%"
+                        y1="0%"
+                        x2="0%"
+                        y2="100%"
+                      >
+                        <stop
+                          offset="0%"
+                          stop-color="#c084fc"
+                          stop-opacity="0.6"
+                        />
+                        <stop
+                          offset="100%"
+                          stop-color="#c084fc"
+                          stop-opacity="0"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      :d="sparkPath(svc.trend)"
+                      fill="none"
+                      stroke="#c084fc"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                      stroke-linecap="round"
+                    />
+                    <path :d="`${sparkPath(svc.trend)} L100 40 L0 40 Z`" :fill="`url(#svc-grad-${svc.id})`" />
+                  </svg>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="card col-span-12 border shadow-sm bg-base-200/10 backdrop-blur lg:col-span-4">
+          <div class="card-body gap-4">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold flex items-center gap-2">
+                <Icon name="tabler-activity-heartbeat" class="text-sky-300" /> Key Signals
+              </h2>
+              <span class="badge badge-sm border-none bg-sky-500/20 text-sky-100">
+                Rolling 24h
+              </span>
+            </div>
+            <div class="space-y-3">
               <div
                 v-for="signal in healthSignals"
                 :key="signal.id"
-                class="rounded-xl ring-1 ring-white/5 backdrop-blur transition bg-base-100/15 p-3 w-full text-sm"
+                class="rounded-xl border border-base-200/40 bg-base-100/15 p-3 text-sm"
               >
                 <div class="flex items-center justify-between">
                   <p class="font-medium">
@@ -314,16 +415,3 @@ function incidentSeverityClass(severity: Incident["severity"]) {
     </main>
   </div>
 </template>
-
-<style scoped>
-  @media (max-width: 768px) {
-  .responsive-grid-card {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  @media (max-width: 480px) {
-    .responsive-grid-card {
-      grid-template-columns: 1fr;
-    }
-  }
-}
-</style>

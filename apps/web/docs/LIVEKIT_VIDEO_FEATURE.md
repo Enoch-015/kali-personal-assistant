@@ -27,16 +27,18 @@ The video feature enables real-time video/audio communication between users and 
 ### 1. Server-Side (`apps/web/server/utils/livekit.ts`)
 
 Handles:
+
 - **Token generation** - Creates JWT tokens with room permissions
 - **Room management** - Create, list, delete rooms via LiveKit API
 - **Participant management** - List/remove participants
 
 Key functions:
+
 ```typescript
-buildLivekitToken(room, identity, metadata)  // Generate access token
-createRoom(roomName, options)                 // Create a room
-listRooms()                                   // List active rooms
-generateUniqueRoomName()                      // Generate unique room names
+buildLivekitToken(room, identity, metadata); // Generate access token
+createRoom(roomName, options); // Create a room
+listRooms(); // List active rooms
+generateUniqueRoomName(); // Generate unique room names
 ```
 
 ### 2. Client-Side Composable (`apps/web/app/composables/use-livekit.ts`)
@@ -44,6 +46,7 @@ generateUniqueRoomName()                      // Generate unique room names
 Vue composable providing reactive state and methods:
 
 **State:**
+
 - `isConnected` - Connection status
 - `isCameraEnabled` - Camera on/off
 - `isMicEnabled` - Microphone on/off
@@ -53,6 +56,7 @@ Vue composable providing reactive state and methods:
 - `sessionId` - Current session ID
 
 **Methods:**
+
 - `connect(name, metadata)` - Join a room
 - `disconnect()` - Leave the room
 - `toggleCamera()` - Toggle camera on/off
@@ -63,6 +67,7 @@ Vue composable providing reactive state and methods:
 ### 3. UI Component (`apps/web/app/components/video-room.vue`)
 
 A complete video room component with:
+
 - Join/leave UI
 - Local video preview
 - Remote participant videos
@@ -71,11 +76,11 @@ A complete video room component with:
 
 ### 4. API Routes
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/livekit/join` | POST | Get token and join a room |
-| `/api/livekit/session/start` | POST | Notify session started |
-| `/api/livekit/session/end` | POST | Notify session ended |
+| Route                        | Method | Description               |
+| ---------------------------- | ------ | ------------------------- |
+| `/api/livekit/join`          | POST   | Get token and join a room |
+| `/api/livekit/session/start` | POST   | Notify session started    |
+| `/api/livekit/session/end`   | POST   | Notify session ended      |
 
 ## Configuration
 
@@ -98,9 +103,9 @@ livekit:
     # IMPORTANT: Must have space after colon!
     LIVEKIT_KEYS: "devkey: secret"
   ports:
-    - "7880:7880"   # WebSocket signaling
-    - "7881:7881"   # TCP fallback
-    - "7882-7932:7882-7932/udp"  # WebRTC media
+    - "7880:7880" # WebSocket signaling
+    - "7881:7881" # TCP fallback
+    - "7882-7932:7882-7932/udp" # WebRTC media
   command: --dev --bind 0.0.0.0
 ```
 
@@ -110,7 +115,7 @@ livekit:
 
 ```vue
 <template>
-  <VideoRoom 
+  <VideoRoom
     :participant-name="userName"
     :show-controls="true"
     @connected="onConnected"
@@ -140,7 +145,7 @@ const {
 });
 
 // Join a room
-await connect('John Doe', { role: 'user' });
+await connect("John Doe", { role: "user" });
 
 // Toggle camera
 await toggleCamera();
@@ -153,22 +158,22 @@ await disconnect();
 
 LiveKit publishes different track types independently:
 
-| Track Source | Description | Can coexist |
-|--------------|-------------|-------------|
-| `Camera` | Webcam video | ✅ Yes |
-| `Microphone` | Audio input | ✅ Yes |
-| `ScreenShare` | Screen capture | ✅ Yes |
-| `ScreenShareAudio` | Screen audio (desktop only) | ✅ Yes |
+| Track Source       | Description                 | Can coexist |
+| ------------------ | --------------------------- | ----------- |
+| `Camera`           | Webcam video                | ✅ Yes      |
+| `Microphone`       | Audio input                 | ✅ Yes      |
+| `ScreenShare`      | Screen capture              | ✅ Yes      |
+| `ScreenShareAudio` | Screen audio (desktop only) | ✅ Yes      |
 
 **Note:** Camera and screen share can be active simultaneously. The AI agent would receive both feeds.
 
 ## Browser Compatibility
 
-| Feature | Desktop Chrome | Desktop Firefox | Desktop Safari | Mobile Chrome | Mobile Safari |
-|---------|---------------|-----------------|----------------|---------------|---------------|
-| Camera | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Microphone | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Screen Share | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Feature      | Desktop Chrome | Desktop Firefox | Desktop Safari | Mobile Chrome | Mobile Safari |
+| ------------ | -------------- | --------------- | -------------- | ------------- | ------------- |
+| Camera       | ✅             | ✅              | ✅             | ✅            | ✅            |
+| Microphone   | ✅             | ✅              | ✅             | ✅            | ✅            |
+| Screen Share | ✅             | ✅              | ✅             | ❌            | ❌            |
 
 Screen sharing requires `getDisplayMedia` API which is **not available on mobile browsers**.
 
@@ -179,6 +184,7 @@ Screen sharing requires `getDisplayMedia` API which is **not available on mobile
 **Cause:** WebRTC peer connection failed (NAT/firewall issues)
 
 **Solutions:**
+
 1. Ensure ports 7880, 7881 are forwarded and public
 2. Check if UDP ports (7882-7932) are accessible
 3. For Codespaces: This is a known limitation due to UDP tunneling

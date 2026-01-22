@@ -1,4 +1,7 @@
 <script setup>
+import BarChart from "./BarChart.vue";
+import LineChart from "./LineChart.vue";
+
 const props = defineProps({
   variant: {
     type: String,
@@ -46,6 +49,48 @@ const props = defineProps({
   },
 });
 
+// Status badge styling for ServiceStatus items
+const statusChipMeta = {
+  online: {
+    badge: "text-emerald-300 border-none",
+    chip: "bg-emerald-400",
+    label: "Online",
+  },
+  degraded: {
+    badge: "text-amber-300 border-none",
+    chip: "bg-amber-400",
+    label: "Degraded",
+  },
+  offline: {
+    badge: "text-rose-300 border-none",
+    chip: "bg-rose-400",
+    label: "Offline",
+  },
+};
+
+function getStatusBadgeClass(status) {
+  return statusChipMeta[status]?.badge ?? "bg-slate-500/15 text-slate-200 border-none";
+}
+
+function getStatusLabel(status) {
+  return statusChipMeta[status]?.label ?? status;
+}
+
+function getLatencyDeltaClass(item) {
+  if (item.latencyDelta === undefined)
+    return "";
+  return item.latencyDelta <= 0 ? "text-emerald-300" : "text-amber-300";
+}
+
+function getLatencyDeltaText(item) {
+  if (item.latencyDelta === undefined || item.target === undefined)
+    return "";
+  if (item.latencyDelta === 0)
+    return "On target";
+  const sign = item.latencyDelta > 0 ? "+" : "-";
+  return `${sign}${Math.abs(item.latencyDelta)}ms vs target`;
+}
+
 // card background variants
 const variantClasses = computed(() => {
   if (props.variant === "gradient") {
@@ -54,16 +99,130 @@ const variantClasses = computed(() => {
   else if (props.variant === "solid") {
     return "bg-base-200/20 hover:bg-base-200/30 h-48";
   }
+  else if (props.variant === "service" || props.variant === "service-bar") {
+    return "bg-base-100/15 border border-base-200/40";
+  }
   return "bg-base-200/20 hover:bg-base-200/30 h-48";
 });
 
+// Generate line chart data for LineChart component
+function generateLineChartData(points, color) {
+  if (!points?.length)
+    return null;
+  return {
+    labels: points.map(() => ""),
+    datasets: [{
+      data: points,
+      borderColor: color,
+      backgroundColor: `${color}20`,
+      fill: true,
+      tension: 0.4,
+      pointRadius: 0,
+    }],
+  };
+}
+
+// Generate bar chart data for BarChart component
+function generateBarChartData(points, color) {
+  if (!points?.length)
+    return null;
+  return {
+    labels: points.map(() => ""),
+    datasets: [{
+      data: points,
+      backgroundColor: color,
+      borderRadius: 2,
+      barPercentage: 0.3,
+      categoryPercentage: 0.9,
+    }],
+  };
+}
+
+// Sparkline chart options (no grid, no labels, tooltips enabled)
+const sparklineOptions = {
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      enabled: true,
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      titleColor: "#fff",
+      bodyColor: "#fff",
+      padding: 8,
+      cornerRadius: 6,
+      displayColors: false,
+      callbacks: {
+        title: () => "",
+        label: context => `${context.parsed.y}`,
+      },
+    },
+  },
+  interaction: {
+    intersect: false,
+    mode: "index",
+  },
+  scales: {
+    x: {
+      display: false,
+      grid: { display: false },
+    },
+    y: {
+      display: false,
+      grid: { display: false },
+    },
+  },
+};
+
+// Bar chart options (no grid, no labels, tooltips enabled)
+const barChartOptions = {
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      enabled: true,
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      titleColor: "#fff",
+      bodyColor: "#fff",
+      padding: 8,
+      cornerRadius: 6,
+      displayColors: false,
+      callbacks: {
+        title: () => "",
+        label: context => `${context.parsed.y}`,
+      },
+    },
+  },
+  interaction: {
+    intersect: false,
+    mode: "index",
+  },
+  scales: {
+    x: {
+      display: false,
+      grid: { display: false },
+    },
+    y: {
+      display: false,
+      grid: { display: false },
+    },
+  },
+};
+
 const processedContent = computed(() =>
-  props.content.map(item => ({
-    ...item,
-    sparkPath: props.variant !== "solid" && item.sparklines
-      ? `M${item.sparklines.map((y, i) => `${i * 20} ${40 - y}`).join(" L")}`
-      : null,
-  })),
+  props.content.map((item) => {
+    // Support both sparklines (KPI style) and trend (ServiceStatus style)
+    const sparkData = item.trend ?? item.sparklines;
+    const lineChartData = props.showSparkline && sparkData ? generateLineChartData(sparkData, props.sparklineColor) : null;
+    const barChartData = props.showSparkline && sparkData ? generateBarChartData(sparkData, props.sparklineColor) : null;
+
+    return {
+      ...item,
+      lineChartData,
+      barChartData,
+      // Normalize name/title for display
+      displayTitle: item.title ?? item.name,
+      // Normalize value display
+      displayValue: item.value ?? (item.latency !== undefined ? `${item.latency}ms` : null),
+    };
+  }),
 );
 
 function parseDelta(kpi) {
@@ -103,7 +262,7 @@ const gridTemplateColumns = computed(() => props.gridColumns);
     <div
       v-for="item in processedContent"
       :key="item.id"
-      class="relative flex flex-col overflow-hidden  ring-1 ring-white/5 backdrop-blur transition"
+      class="relative flex flex-col overflow-hidden ring-1 ring-white/5 backdrop-blur transition"
       :class="[
         variantClasses,
         padding,
@@ -122,87 +281,139 @@ const gridTemplateColumns = computed(() => props.gridColumns);
 
       <!-- Layout Container -->
       <div class="relative z-10 flex h-full flex-col gap-2">
-        <!-- Title + Delta Pill -->
-        <div class="flex items-start md:flex-col lg:flex-row gap-2">
-          <h3 class="text-[13px] font-medium tracking-wide uppercase opacity-80 leading-tight line-clamp-2 pr-1">
-            {{ item.title }}
-          </h3>
-
-          <span
-            v-if="item.deltaText"
-            class="ml-auto inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-medium leading-none backdrop-blur shrink-0 md:justify-center"
-            :class="[deltaPillClasses(item)]"
-          >
-            <Icon
-              v-if="item.deltaText !== undefined"
-              :name="item.deltaText === 0 ? 'tabler-arrows-diff' : 'tabler-trending-up'"
-              class="size-3"
-            />
-
-            {{ item.deltaText }}
-          </span>
-        </div>
-
-        <!-- Value + Baseline + Sparkline -->
-        <div
-          class="flex flex-1 gap-1.5"
-          :class="props.variant === 'solid'
-            ? 'justify-center items-center text-center text-2xl'
-            : 'justify-between items-end'"
-        >
-          <div>
-            <div
-              class="font-semibold tracking-tight"
-              :class="item.variant === 'gradient' ? 'text-white' : accentColor"
-            >
-              {{ item.value }}
+        <!-- SERVICE VARIANT: ServiceStatus layout with line chart -->
+        <template v-if="variant === 'service'">
+          <div class="flex items-start gap-3">
+            <!-- Icon -->
+            <div v-if="item.icon" class="rounded-lg bg-base-300/40 p-2">
+              <Icon :name="item.icon" class="text-purple-200" />
             </div>
-            <div class="mt-1 text-[15px] opacity-60">
-              {{ item.baselineLabel }}
+            <!-- Name & Status -->
+            <div class="min-w-0">
+              <p class="font-medium leading-tight text-sm">
+                {{ item.displayTitle }}
+              </p>
+              <span
+                v-if="item.status"
+                class="badge badge-ghost badge-xs"
+                :class="getStatusBadgeClass(item.status)"
+              >
+                {{ getStatusLabel(item.status) }}
+              </span>
+            </div>
+            <!-- Latency info -->
+            <div v-if="item.latency !== undefined" class="ml-auto text-right">
+              <p v-if="item.target" class="text-xs opacity-60">
+                Target {{ item.target }}ms
+              </p>
+              <p class="font-semibold text-sm" :class="getLatencyDeltaClass(item)">
+                {{ item.latency }}ms
+                <span v-if="item.latencyDelta !== undefined" class="font-normal">
+                  · {{ getLatencyDeltaText(item) }}
+                </span>
+              </p>
             </div>
           </div>
 
-          <!-- Sparkline only for gradient -->
-          <div
-            v-if="item.sparkPath && showSparkline"
-            class="relative h-14 w-25 sm:h-16 sm:w-24"
-          >
-            <svg viewBox="0 0 100 40" class="absolute inset-0 h-full w-full overflow-visible">
-              <defs>
-                <linearGradient
-                  :id="`grad-${item.id}`"
-                  x1="0%"
-                  y1="0%"
-                  x2="0%"
-                  y2="100%"
+          <!-- Sparkline for service variant (line chart) -->
+          <div v-if="item.lineChartData && showSparkline" class="mt-auto h-14 w-full">
+            <LineChart :data="item.lineChartData" :options="sparklineOptions" />
+          </div>
+        </template>
+
+        <!-- SERVICE-BAR VARIANT: ServiceStatus layout with bar chart -->
+        <template v-else-if="variant === 'service-bar'">
+          <div class="flex flex-col gap-3">
+            <div class=" relative flex items-center gap-2 ">
+              <!-- Icon -->
+              <div v-if="item.icon" class="rounded-lg bg-base-300/40 p-2">
+                <Icon :name="item.icon" class="text-purple-200" />
+              </div>
+              <!-- Name & Status -->
+              <div class="min-w-0 flex flex-col md:flex-row gap-2">
+                <p class="font-medium leading-tight text-sm">
+                  {{ item.displayTitle }}
+                </p>
+                <span
+                  v-if="item.status"
+                  class="badge badge-ghost badge-xs md:absolute md:right-0"
+                  :class="getStatusBadgeClass(item.status)"
                 >
-                  <stop
-                    offset="0%"
-                    stop-color="#a855f7"
-                    stop-opacity="0.8"
-                  />
-                  <stop
-                    offset="100%"
-                    stop-color="#a855f7"
-                    stop-opacity="0"
-                  />
-                </linearGradient>
-              </defs>
-              <path
-                :d="item.sparkPath"
-                fill="none"
-                :stroke="sparklineColor"
-                stroke-width="2"
-                stroke-linejoin="round"
-                stroke-linecap="round"
-              />
-              <path
-                :d="`${item.sparkPath} L100 40 L0 40 Z`"
-                :fill="`url(#grad-${item.id})`"
-              />
-            </svg>
+                  {{ getStatusLabel(item.status) }}
+                </span>
+              </div>
+            </div>
+            <!-- Latency info -->
+            <div v-if="item.latency !== undefined" class="ml-auto text-right">
+              <p v-if="item.target" class="text-xs opacity-60">
+                Target {{ item.target }}ms
+              </p>
+              <p class="font-semibold text-sm" :class="getLatencyDeltaClass(item)">
+                {{ item.latency }}ms
+                <span v-if="item.latencyDelta !== undefined" class="font-normal">
+                  · {{ getLatencyDeltaText(item) }}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
+
+          <!-- Bar chart for service-bar variant -->
+          <div v-if="item.barChartData && showSparkline" class="mt-auto h-14 w-full">
+            <BarChart :data="item.barChartData" :options="barChartOptions" />
+          </div>
+        </template>
+
+        <!-- DEFAULT/GRADIENT/SOLID VARIANT: KPI layout -->
+        <template v-else>
+          <!-- Title + Delta Pill -->
+          <div class="flex items-start md:flex-col lg:flex-row gap-2">
+            <h3 class="text-[13px] font-medium tracking-wide uppercase opacity-80 leading-tight line-clamp-2 pr-1">
+              {{ item.displayTitle }}
+            </h3>
+
+            <span
+              v-if="item.deltaText"
+              class="ml-auto inline-flex items-center gap-0.5 rounded-full px-2 py-1 text-[10px] font-medium leading-none backdrop-blur shrink-0 md:justify-center"
+              :class="[deltaPillClasses(item)]"
+            >
+              <Icon
+                v-if="item.deltaText !== undefined"
+                :name="item.deltaText === 0 ? 'tabler-arrows-diff' : 'tabler-trending-up'"
+                class="size-3"
+              />
+
+              {{ item.deltaText }}
+            </span>
+          </div>
+
+          <!-- Value + Baseline + Sparkline -->
+          <div
+            class="flex flex-1 gap-1.5"
+            :class="props.variant === 'solid'
+              ? 'justify-center items-center text-center text-2xl'
+              : 'justify-between items-end'"
+          >
+            <div>
+              <div
+                class="font-semibold tracking-tight"
+                :class="item.variant === 'gradient' ? 'text-white' : accentColor"
+              >
+                {{ item.displayValue }}
+              </div>
+              <div v-if="item.baselineLabel" class="mt-1 text-[15px] opacity-60">
+                {{ item.baselineLabel }}
+              </div>
+            </div>
+
+            <!-- Sparkline for gradient/default variants -->
+            <div
+              v-if="item.lineChartData && showSparkline"
+              class="h-14 w-25 sm:h-16 sm:w-24"
+            >
+              <LineChart :data="item.lineChartData" :options="sparklineOptions" />
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>

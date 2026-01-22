@@ -1,22 +1,23 @@
 import type { RemoteParticipant, RemoteTrack, RemoteTrackPublication } from "livekit-client";
+
 import { Room, RoomEvent, Track } from "livekit-client";
 
-export interface LiveKitOptions {
+export type LiveKitOptions = {
   onTrackSubscribed?: (track: RemoteTrack, participant: RemoteParticipant) => void;
   onTrackUnsubscribed?: (track: RemoteTrack, participant: RemoteParticipant) => void;
   onParticipantConnected?: (participant: RemoteParticipant) => void;
   onParticipantDisconnected?: (participant: RemoteParticipant) => void;
   onDisconnected?: () => void;
   onDataReceived?: (data: Uint8Array, participant?: RemoteParticipant) => void;
-}
+};
 
-export interface ConnectResult {
+export type ConnectResult = {
   success: boolean;
   roomName?: string;
   sessionId?: string;
   ephemeralKeyId?: string;
   error?: string;
-}
+};
 
 export function useLiveKit(options: LiveKitOptions = {}) {
   const room = ref<Room | null>(null);
@@ -297,7 +298,8 @@ export function useLiveKit(options: LiveKitOptions = {}) {
    * Get local video track element
    */
   function getLocalVideoElement(): HTMLVideoElement | null {
-    if (!room.value) return null;
+    if (!room.value)
+      return null;
 
     const publication = room.value.localParticipant.getTrackPublication(Track.Source.Camera);
     if (publication?.track) {
@@ -310,7 +312,8 @@ export function useLiveKit(options: LiveKitOptions = {}) {
    * Get local screen share track element
    */
   function getLocalScreenShareElement(): HTMLVideoElement | null {
-    if (!room.value) return null;
+    if (!room.value)
+      return null;
 
     const publication = room.value.localParticipant.getTrackPublication(Track.Source.ScreenShare);
     if (publication?.track) {
@@ -323,7 +326,8 @@ export function useLiveKit(options: LiveKitOptions = {}) {
    * Get all remote participants
    */
   function getRemoteParticipants(): RemoteParticipant[] {
-    if (!room.value) return [];
+    if (!room.value)
+      return [];
     return Array.from(room.value.remoteParticipants.values());
   }
 
@@ -334,7 +338,8 @@ export function useLiveKit(options: LiveKitOptions = {}) {
     data: Uint8Array | string,
     options?: { reliable?: boolean; destinationIdentities?: string[] },
   ) {
-    if (!room.value) return;
+    if (!room.value)
+      return;
 
     const encoder = new TextEncoder();
     const dataToSend = typeof data === "string" ? encoder.encode(data) : data;
@@ -346,7 +351,8 @@ export function useLiveKit(options: LiveKitOptions = {}) {
    * Update session with transcript URL
    */
   async function updateTranscript(transcriptUrl: string) {
-    if (!sessionId.value) return;
+    if (!sessionId.value)
+      return;
 
     try {
       await $fetch(`/api/livekit/session/${sessionId.value}`, {

@@ -37,7 +37,7 @@ export type RoomInfo = {
 };
 
 export type TokenMetadata = {
-  participant: string;   
+  participant: string;
   ephemeralKeyId?: string;
   userId?: string;
   sessionId?: string;

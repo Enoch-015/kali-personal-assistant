@@ -91,7 +91,8 @@ const {
 const canJoin = computed(() => nameInput.value.trim().length > 0);
 
 async function handleJoin() {
-  if (!canJoin.value || isJoining.value) return;
+  if (!canJoin.value || isJoining.value)
+    return;
 
   isJoining.value = true;
   const result = await connect(nameInput.value.trim());

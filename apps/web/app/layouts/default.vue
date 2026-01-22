@@ -269,25 +269,137 @@ function handleLivekitError(error: string) {
       </div>
     </transition>
 
-    <!-- LiveKit Widget Toggle Button -->
-    <button
-      class="fixed bottom-8 right-4 z-30 inline-flex items-center justify-center w-12 h-12 rounded-full border border-purple-400/50 bg-gradient-to-r from-indigo-600 via-purple-500 to-fuchsia-500 text-white shadow-lg transition hover:shadow-xl"
-      :class="{ 'ring-2 ring-success ring-offset-2 ring-offset-base-100': livekitConnected }"
-      aria-label="Toggle video session"
-      @click="toggleLivekitWidget"
-    >
-      <Icon :name="livekitConnected ? 'tabler-video' : 'tabler-video-plus'" class="text-xl" />
-    </button>
+    <!-- FAB Flower Speed Dial -->
+    <div class="fab fab-flower fixed bottom-6 right-6 z-30">
+      <!-- Main FAB trigger -->
+      <div
+        tabindex="0"
+        role="button"
+        class="btn btn-circle btn-lg bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 border-purple-400/50 text-white shadow-lg hover:shadow-xl"
+      >
+        <!-- Plus icon -->
+        <svg
+          aria-label="Open menu"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          class="size-6"
+        >
+          <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+        </svg>
+      </div>
 
-    <!-- Ask Me Anything Button -->
-    <button
-      class="fixed bottom-8 left-1/2 z-30 inline-flex -translate-x-1/2 transform items-center gap-2 rounded-full border border-purple-400/50 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-indigo-500 px-4 py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:shadow-xl"
-      aria-label="Open ask widget"
-      @click="toggleAskWidget"
-    >
-      <Icon name="tabler-message-circle" class="text-base" />
-      <span>Ask me anything</span>
-    </button>
+      <!-- Video Session button -->
+      <div class="tooltip tooltip-left" data-tip="Video Session">
+        <button
+          class="btn btn-circle btn-lg"
+          :class="{ 'btn-success': livekitConnected }"
+          aria-label="Toggle video session"
+          @click="toggleLivekitWidget"
+        >
+          <!-- Video icon -->
+          <svg
+            aria-label="Video"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Ask Me Anything (Voice) button -->
+      <div class="tooltip tooltip-left" data-tip="Ask Anything">
+        <button
+          class="btn btn-circle btn-lg"
+          :class="askRecording ? 'btn-error' : ''"
+          aria-label="Open ask widget"
+          @click="toggleAskWidget"
+        >
+          <!-- Microphone icon -->
+          <svg
+            aria-label="Ask"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Notifications button -->
+      <div class="tooltip" data-tip="Notifications">
+        <button
+          class="btn btn-circle btn-lg relative"
+          aria-label="Notifications"
+        >
+          <!-- Bell icon -->
+          <svg
+            aria-label="Notifications"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+            />
+          </svg>
+          <span v-if="notifications > 0" class="badge badge-primary badge-xs absolute -right-1 -top-1">{{ notifications }}</span>
+        </button>
+      </div>
+
+      <!-- Settings button -->
+      <div class="tooltip" data-tip="Settings">
+        <NuxtLink
+          to="/settings"
+          class="btn btn-circle btn-lg"
+          aria-label="Settings"
+        >
+          <!-- Settings/Cog icon -->
+          <svg
+            aria-label="Settings"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="size-6"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"
+            />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+            />
+          </svg>
+        </NuxtLink>
+      </div>
+    </div>
   </div>
 </template>
 
