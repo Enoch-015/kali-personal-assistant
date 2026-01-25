@@ -96,12 +96,7 @@ const variantClasses = computed(() => {
   if (props.variant === "gradient") {
     return "bg-gradient-to-br from-purple-600 via-fuchsia-600 to-indigo-600 text-white h-48";
   }
-  else if (props.variant === "solid") {
-    return "bg-base-200/20 hover:bg-base-200/30 h-48";
-  }
-  else if (props.variant === "service" || props.variant === "service-bar") {
-    return "bg-base-100/15 border border-base-200/40";
-  }
+
   return "bg-base-200/20 hover:bg-base-200/30 h-48";
 });
 
@@ -262,12 +257,13 @@ const gridTemplateColumns = computed(() => props.gridColumns);
     <div
       v-for="item in processedContent"
       :key="item.id"
-      class="relative flex flex-col overflow-hidden ring-1 ring-white/5 backdrop-blur transition"
+      class="relative flex flex-col overflow-hidden ring-1 ring-white/5 backdrop-blur transition-all duration-300"
       :class="[
         variantClasses,
         padding,
         borderRadius,
         shadow,
+        variant === 'service-bar' ? 'hover:scale-[1.03] hover:z-10' : '',
       ]"
     >
       <!-- gradient background decorations -->

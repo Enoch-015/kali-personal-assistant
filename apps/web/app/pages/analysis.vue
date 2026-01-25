@@ -190,10 +190,10 @@ const incidentLog = reactive<Incident[]>([
 
 function incidentSeverityClass(severity: Incident["severity"]) {
   if (severity === "high")
-    return "bg-rose-500/15 text-rose-200 border-none";
+    return "text-rose-500 border-none";
   if (severity === "moderate")
-    return "bg-amber-500/15 text-amber-200 border-none";
-  return "bg-slate-500/15 text-slate-200 border-none";
+    return "text-amber-400 border-none";
+  return "text-green-300 border-none";
 }
 </script>
 
@@ -205,7 +205,7 @@ function incidentSeverityClass(severity: Incident["severity"]) {
           <h1 class="text-2xl font-semibold tracking-tight">
             Systems Analysis
           </h1>
-          <p class="text-sm opacity-70">
+          <p class="mt-1 text-sm opacity-70">
             Infrastructure, latency, and resilience signals for deeper diagnosis.
           </p>
         </div>
@@ -215,8 +215,9 @@ function incidentSeverityClass(severity: Incident["severity"]) {
         </div>
       </header>
 
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-12">
-        <section class="border col-span-2 md:col-span-3 shadow-sm bg-base-200/10 backdrop-blur lg:col-span-12">
+      <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-12">
+        <!-- performance and health -->
+        <section class="border col-span-12 md:col-span-3 shadow-sm bg-base-200/10 backdrop-blur lg:col-span-12">
           <div class="card-body gap-4">
             <div class="flex items-center justify-between">
               <h2 class="font-semibold flex items-center gap-2">
@@ -244,13 +245,13 @@ function incidentSeverityClass(severity: Incident["severity"]) {
               grid-columns="repeat(4, 1fr)"
               padding="p-10"
               border-radius="rounded-xl"
-              shadow="shadow-none"
+              shadow="shadow-xl"
             />
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5 ">
               <div
                 v-for="signal in healthSignals"
                 :key="signal.id"
-                class="rounded-xl ring-1 ring-white/5 backdrop-blur transition bg-base-100/15 p-3 w-full text-sm"
+                class="rounded-xl ring-1 ring-white/5 backdrop-blur transition shadow-xl hover:bg-base-200/30 p-3 w-full text-sm"
               >
                 <div class="flex items-center justify-between">
                   <p class="font-medium">
@@ -271,13 +272,14 @@ function incidentSeverityClass(severity: Incident["severity"]) {
           </div>
         </section>
 
-        <section class="card col-span-12 border shadow-sm bg-base-200/10 backdrop-blur">
+        <!-- recent activities -->
+        <section class="card col-span-12 border shadow-sm bg-base-200/10 backdrop-blur transition duration-300 hover:scale-[1.02] ">
           <div class="card-body gap-4">
             <div class="flex items-center justify-between">
               <h2 class="font-semibold flex items-center gap-2">
-                <Icon name="tabler-clipboard-text" class="text-amber-300" /> Recent Incidents
+                <Icon name="tabler-clipboard-text" class="text-purple-400" /> Recent Incidents
               </h2>
-              <span class="badge badge-sm border-none bg-amber-500/20 text-amber-100">
+              <span class="badge badge-sm border-none text-amber-100">
                 Past 7 days
               </span>
             </div>
@@ -288,7 +290,7 @@ function incidentSeverityClass(severity: Incident["severity"]) {
                 class="flex items-start gap-3 rounded-xl border border-base-200/40 bg-base-100/15 p-3 text-sm"
               >
                 <div class="rounded-lg bg-base-300/40 p-2">
-                  <Icon :name="incident.icon" class="text-amber-200" />
+                  <Icon :name="incident.icon" class="text-purple-500" />
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-start justify-between gap-2">
