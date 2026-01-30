@@ -326,18 +326,20 @@ const gridTemplateColumns = computed(() => props.gridColumns);
                 <Icon :name="item.icon" class="text-purple-200" />
               </div>
               <!-- Name & Status -->
-              <div class="min-w-0 flex flex-col md:flex-row gap-2">
-                <p class="font-medium leading-tight text-sm">
+              <div class="min-w-0 flex flex-wrap items-center gap-2">
+                <p class="flex-1 min-w-[220px] font-medium leading-tight text-sm">
                   {{ item.displayTitle }}
                 </p>
+
                 <span
                   v-if="item.status"
-                  class="badge badge-ghost badge-xs md:absolute md:right-0"
+                  class="badge badge-ghost badge-xs whitespace-nowrap"
                   :class="getStatusBadgeClass(item.status)"
                 >
                   {{ getStatusLabel(item.status) }}
                 </span>
               </div>
+
             </div>
             <!-- Latency info -->
             <div v-if="item.latency !== undefined" class="ml-auto text-right">

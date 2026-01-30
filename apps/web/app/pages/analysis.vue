@@ -217,7 +217,7 @@ function incidentSeverityClass(severity: Incident["severity"]) {
 
       <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-12">
         <!-- performance and health -->
-        <section class="border col-span-12 md:col-span-3 shadow-sm bg-base-200/10 backdrop-blur lg:col-span-12">
+        <section class="border w-full col-span-12 shadow-sm bg-base-200/10 backdrop-blur lg:col-span-12">
           <div class="card-body gap-4">
             <div class="flex items-center justify-between">
               <h2 class="font-semibold flex items-center gap-2">
