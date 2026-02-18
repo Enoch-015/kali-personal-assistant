@@ -34,4 +34,8 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Vault credentials - NEVER commit these!
+.vault-credentials.env
+*.vault-credentials*
+
 # Build outputs are in individual apps

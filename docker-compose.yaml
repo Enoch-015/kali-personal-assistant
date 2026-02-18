@@ -99,34 +99,36 @@ services:
     command: --dev --bind 0.0.0.0
 
   # ------------------------
-  # Vault
+  # Vault (Dev Mode - Local Use Only)
   # ------------------------
+  # SECURITY NOTES:
+  # - Uses random root token from .env (NEVER use "myroot" or predictable tokens)
+  # - Binds to localhost only (127.0.0.1) - not accessible from external IPs
+  # - For production, use proper Vault with TLS and auto-unseal
   vault:
     image: hashicorp/vault:latest
     container_name: vault-dev
     ports:
-      - "8200:8200"
+      - "127.0.0.1:8200:8200"  # Localhost only - NOT exposed to network
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: myroot
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN}  # Set in .env - use random token
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_LOG_LEVEL: info
     cap_add:
       - IPC_LOCK
+    volumes:
+      - vault_logs:/vault/logs
     networks:
       - vault-network
-
-  # Optional: Vault UI (if you want a web interface)
-  vault-ui:
-    image: djenriquez/vault-ui:latest
-    container_name: vault-ui
-    ports:
-      - "8000:8000"
-    environment:
-      VAULT_URL_DEFAULT: http://vault:8200
-      VAULT_AUTH_DEFAULT: TOKEN
-    depends_on:
-      - vault
-    networks:
-      - vault-network
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
 
 # ------------------------
 # Named Volumes
@@ -138,6 +140,7 @@ volumes:
   neo4j_import:
   neo4j_plugins:
   mongo_data:
+  vault_logs:
 
 # ------------------------
 # Networks

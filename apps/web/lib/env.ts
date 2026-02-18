@@ -51,6 +51,12 @@ const envSchema = z.object({
   LIVEKIT_URL: z.string().default("ws://localhost:7880"),
   // Server-side URL for LiveKit API calls (use localhost in dev containers)
   LIVEKIT_SERVER_URL: z.string().optional(),
+
+  // Vault configuration (AppRole authentication)
+  // Default to localhost for local dev; use http://vault-dev:8200 for Docker
+  VAULT_ADDR: z.string().default("http://127.0.0.1:8200"),
+  VAULT_ROLE_ID: z.string().optional(),
+  VAULT_SECRET_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

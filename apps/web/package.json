@@ -30,6 +30,7 @@
     "livekit-client": "2.11.0",
     "livekit-server-sdk": "^2.15.0",
     "lucide-vue-next": "^0.544.0",
+    "node-vault": "^0.10.2",
     "nuxt": "^4.1.2",
     "reka-ui": "^2.6.1",
     "shadcn-nuxt": "^2.2.0",

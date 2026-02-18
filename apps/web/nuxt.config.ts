@@ -9,6 +9,21 @@ export default defineNuxtConfig({
   modules: ["@nuxt/eslint", "@nuxt/icon", "shadcn-nuxt", "@nuxt/image"],
   // Ensure we point to the actual CSS file location
   css: ["~/assets/css/main.css"],
+
+  // Runtime configuration for server-side secrets
+  runtimeConfig: {
+    // Private (server-only) - these come from environment variables
+    // Default to localhost for local dev; use http://vault-dev:8200 for Docker
+    vaultAddr: process.env.VAULT_ADDR || "http://127.0.0.1:8200",
+    vaultRoleId: process.env.VAULT_ROLE_ID || "",
+    vaultSecretId: process.env.VAULT_SECRET_ID || "",
+
+    public: {
+      // Public configuration (exposed to client)
+      // Do NOT put secrets here
+    },
+  },
+
   // Apply DaisyUI base colors to the whole page
   app: {
     head: {

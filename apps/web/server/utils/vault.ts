@@ -17,6 +17,17 @@ type VaultSecret = {
   [key: string]: any;
 };
 
+/**
+ * Typed secrets structure for the Kali application
+ */
+export type VaultSecrets = {
+  nuxt?: VaultSecret;
+  shared?: VaultSecret;
+  livekit?: VaultSecret;
+  databases?: VaultSecret;
+  "python-ai"?: VaultSecret;
+};
+
 class VaultClient {
   private client: any = null;
   private token: string | undefined = undefined;
@@ -239,3 +250,77 @@ export async function getLiveKitSecrets() {
   const client = getVaultClient();
   return await client.getSecret("livekit");
 }
+
+// ============================
+// Admin Functions (Write Operations)
+// ============================
+
+/**
+ * Update a single secret key at a path
+ * Admin-only operation
+ */
+export async function updateSecretKey(path: string, key: string, value: string): Promise<void> {
+  const client = getVaultClient();
+  const existing = await client.getSecret(path, false);
+  existing[key] = value;
+  await client.setSecret(path, existing);
+}
+
+/**
+ * Update multiple secret keys at a path (merge)
+ * Admin-only operation
+ */
+export async function updateSecrets(path: string, updates: Record<string, any>): Promise<void> {
+  const client = getVaultClient();
+  const existing = await client.getSecret(path, false);
+  const merged = { ...existing, ...updates };
+  await client.setSecret(path, merged);
+}
+
+/**
+ * Delete a single secret key from a path
+ * Admin-only operation
+ */
+export async function deleteSecretKey(path: string, key: string): Promise<void> {
+  const client = getVaultClient();
+  const existing = await client.getSecret(path, false);
+  delete existing[key];
+  await client.setSecret(path, existing);
+}
+
+/**
+ * Get all secrets for all known paths
+ * Useful for admin dashboard
+ */
+export async function getAllSecrets(): Promise<VaultSecrets> {
+  const client = getVaultClient();
+
+  const [nuxt, shared, livekit, databases, pythonAi] = await Promise.all([
+    client.getSecret("nuxt").catch(() => ({})),
+    client.getSecret("shared").catch(() => ({})),
+    client.getSecret("livekit").catch(() => ({})),
+    client.getSecret("databases").catch(() => ({})),
+    client.getSecret("python-ai").catch(() => ({})),
+  ]);
+
+  return {
+    nuxt,
+    shared,
+    livekit,
+    databases,
+    "python-ai": pythonAi,
+  } as VaultSecrets;
+}
+
+/**
+ * Available secret paths in the system
+ */
+export const SECRET_PATHS = {
+  NUXT: "nuxt",
+  SHARED: "shared",
+  PYTHON_AI: "python-ai",
+  LIVEKIT: "livekit",
+  DATABASES: "databases",
+} as const;
+
+export type SecretPath = typeof SECRET_PATHS[keyof typeof SECRET_PATHS];

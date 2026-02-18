@@ -1,1 +1,6 @@
 livekit-api==1.0.3
+python-dotenv>=1.0.0
+pydantic>=2.7,<3
+pydantic-settings>=2.2
+# HashiCorp Vault client
+hvac>=2.1.0
