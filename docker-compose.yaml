@@ -131,6 +131,38 @@ services:
     restart: unless-stopped
 
 # ------------------------
+# Application Services (Example)
+# ------------------------
+# Uncomment and customize these when deploying application containers.
+# They automatically load Vault credentials from .vault-credentials.env
+#
+#  nuxt-web:
+#    build: ./apps/web
+#    env_file:
+#      - .env
+#      - .vault-credentials.env
+#    environment:
+#      VAULT_ADDR: http://vault-dev:8200
+#    depends_on:
+#      vault:
+#        condition: service_healthy
+#    networks:
+#      - vault-network
+#
+#  python-ai:
+#    build: ./apps/ai
+#    env_file:
+#      - .env
+#      - .vault-credentials.env
+#    environment:
+#      VAULT_ADDR: http://vault-dev:8200
+#    depends_on:
+#      vault:
+#        condition: service_healthy
+#    networks:
+#      - vault-network
+
+# ------------------------
 # Named Volumes
 # ------------------------
 volumes:

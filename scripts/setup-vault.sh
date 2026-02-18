@@ -34,9 +34,9 @@ VAULT_CONTAINER="${VAULT_CONTAINER:-vault-dev}"
 USE_LOCAL_VAULT=false
 
 detect_vault_mode() {
-    # Check if local vault CLI is available and Vault is running locally
-    if command -v vault &>/dev/null; then
-        if vault status -address="${VAULT_ADDR}" &>/dev/null 2>&1; then
+    # Check if local vault CLI is availaf command -v vault &>/dev/null; then
+        if vault status -address="$ble and Vault is running locally
+    i{VAULT_ADDR}" &>/dev/null 2>&1; then
             USE_LOCAL_VAULT=true
             echo -e "${GREEN}Detected local Vault installation${NC}"
             return 0
