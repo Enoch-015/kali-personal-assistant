@@ -63,20 +63,36 @@ class VaultSettings(BaseModel):
     )
 
     @classmethod
-    def from_env(cls, prefix: str = "") -> "VaultSettings":
+    def from_env(cls, service_name: str = "") -> "VaultSettings":
         """
         Load settings from environment variables.
         
+        In Docker containers, each service gets its own VAULT_ROLE_ID and VAULT_SECRET_ID
+        directly (no prefix needed). For local development, prefixed vars are supported.
+        
+        Lookup order for role_id:
+        1. VAULT_ROLE_ID (primary - used in Docker containers)
+        2. {SERVICE_NAME}_VAULT_ROLE_ID (e.g., PYTHON_AI_VAULT_ROLE_ID for local dev)
+        
         Args:
-            prefix: Optional prefix for env vars (e.g., "PYTHON_AI_" -> PYTHON_AI_VAULT_ROLE_ID)
+            service_name: Optional service name for prefixed env vars (e.g., "PYTHON_AI", "LIVEKIT")
         """
-        p = f"{prefix}_" if prefix else ""
+        # Primary lookup: direct VAULT_ROLE_ID/SECRET_ID (Docker containers)
+        role_id = os.getenv("VAULT_ROLE_ID", "")
+        secret_id = os.getenv("VAULT_SECRET_ID", "")
+        
+        # Fallback: prefixed vars for local development
+        if not role_id and service_name:
+            prefix = service_name.upper().replace("-", "_")
+            role_id = os.getenv(f"{prefix}_VAULT_ROLE_ID", "")
+            secret_id = os.getenv(f"{prefix}_VAULT_SECRET_ID", "")
+        
         return cls(
-            addr=os.getenv(f"{p}VAULT_ADDR", os.getenv("VAULT_ADDR", "http://127.0.0.1:8200")),
-            role_id=os.getenv(f"{p}VAULT_ROLE_ID", ""),
-            secret_id=os.getenv(f"{p}VAULT_SECRET_ID", ""),
-            mount_point=os.getenv(f"{p}VAULT_MOUNT_POINT", "secret"),
-            cache_ttl_seconds=int(os.getenv(f"{p}VAULT_CACHE_TTL", "300")),
+            addr=os.getenv("VAULT_ADDR", "http://127.0.0.1:8200"),
+            role_id=role_id,
+            secret_id=secret_id,
+            mount_point=os.getenv("VAULT_MOUNT_POINT", "secret"),
+            cache_ttl_seconds=int(os.getenv("VAULT_CACHE_TTL", "300")),
         )
 
 

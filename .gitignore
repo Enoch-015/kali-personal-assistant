@@ -39,3 +39,6 @@ Thumbs.db
 *.vault-credentials*
 
 # Build outputs are in individual apps
+
+.venv/
+venv/

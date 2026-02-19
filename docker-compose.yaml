@@ -133,34 +133,94 @@ services:
 # ------------------------
 # Application Services (Example)
 # ------------------------
-# Uncomment and customize these when deploying application containers.
-# They automatically load Vault credentials from .vault-credentials.env
+# These service definitions show how each container receives its
+# specific Vault credentials. Each service gets VAULT_ROLE_ID and
+# VAULT_SECRET_ID directly - the code uses these to authenticate to Vault.
 #
+# PREREQUISITE: Run ./scripts/setup-vault.sh first to generate:
+#   - .vault-credentials.env (contains all service credentials)
+#
+# The env_file loads credentials, then environment: maps them to
+# the standard VAULT_ROLE_ID/SECRET_ID that the Python code expects.
+#
+# Uncomment and customize when deploying application containers.
+
+#  # ----------------------
+#  # Nuxt Web Frontend
+#  # ----------------------
 #  nuxt-web:
 #    build: ./apps/web
+#    container_name: kali-web
+#    ports:
+#      - "3000:3000"
 #    env_file:
 #      - .env
 #      - .vault-credentials.env
 #    environment:
+#      # Map service-specific credentials to standard names
 #      VAULT_ADDR: http://vault-dev:8200
+#      VAULT_ROLE_ID: ${NUXT_VAULT_ROLE_ID}
+#      VAULT_SECRET_ID: ${NUXT_VAULT_SECRET_ID}
 #    depends_on:
 #      vault:
 #        condition: service_healthy
+#      redis:
+#        condition: service_healthy
 #    networks:
 #      - vault-network
+#    restart: unless-stopped
 #
+#  # ----------------------
+#  # Python AI Service
+#  # ----------------------
 #  python-ai:
 #    build: ./apps/ai
+#    container_name: kali-ai
+#    ports:
+#      - "8000:8000"
 #    env_file:
 #      - .env
 #      - .vault-credentials.env
 #    environment:
+#      # Map service-specific credentials to standard names
 #      VAULT_ADDR: http://vault-dev:8200
+#      VAULT_ROLE_ID: ${PYTHON_AI_VAULT_ROLE_ID}
+#      VAULT_SECRET_ID: ${PYTHON_AI_VAULT_SECRET_ID}
 #    depends_on:
 #      vault:
 #        condition: service_healthy
+#      redis:
+#        condition: service_healthy
+#      neo4j:
+#        condition: service_healthy
+#      mongodb:
+#        condition: service_healthy
 #    networks:
 #      - vault-network
+#    restart: unless-stopped
+#
+#  # ----------------------
+#  # LiveKit Voice Service
+#  # ----------------------
+#  livekit-voice:
+#    build: ./apps/voice
+#    container_name: kali-voice
+#    env_file:
+#      - .env
+#      - .vault-credentials.env
+#    environment:
+#      # Map service-specific credentials to standard names
+#      VAULT_ADDR: http://vault-dev:8200
+#      VAULT_ROLE_ID: ${LIVEKIT_VAULT_ROLE_ID}
+#      VAULT_SECRET_ID: ${LIVEKIT_VAULT_SECRET_ID}
+#    depends_on:
+#      vault:
+#        condition: service_healthy
+#      livekit:
+#        condition: service_started
+#    networks:
+#      - vault-network
+#    restart: unless-stopped
 
 # ------------------------
 # Named Volumes

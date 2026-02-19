@@ -34,9 +34,9 @@ VAULT_CONTAINER="${VAULT_CONTAINER:-vault-dev}"
 USE_LOCAL_VAULT=false
 
 detect_vault_mode() {
-    # Check if local vault CLI is availaf command -v vault &>/dev/null; then
-        if vault status -address="$ble and Vault is running locally
-    i{VAULT_ADDR}" &>/dev/null 2>&1; then
+    # Check if local vault CLI is available and Vault is running locally
+    if command -v vault &>/dev/null; then
+        if vault status -address="${VAULT_ADDR}" &>/dev/null 2>&1; then
             USE_LOCAL_VAULT=true
             echo -e "${GREEN}Detected local Vault installation${NC}"
             return 0
@@ -440,14 +440,16 @@ cat > "${CREDS_FILE}" << EOF
 #   - python-ai:  READ-ONLY  (consumes secrets configured via web UI)
 #   - livekit:    READ-ONLY  (consumes secrets configured via web UI)
 #
+# Usage:
+#   LOCAL DEV: Each service looks for its prefixed vars (PYTHON_AI_VAULT_ROLE_ID, etc.)
+#   DOCKER:    docker-compose.yaml maps these to VAULT_ROLE_ID for each container
+#
 
 # ============================
 # Vault Address
 # ============================
 # For local development (services running on host):
 VAULT_ADDR=http://127.0.0.1:8200
-# For Docker services (services running in containers):
-# VAULT_ADDR=http://vault-dev:8200
 
 # ============================
 # Root Token (for emergency admin operations only)
@@ -457,18 +459,21 @@ VAULT_ROOT_TOKEN=${VAULT_ROOT_TOKEN}
 # ============================
 # Nuxt Admin Credentials (READ/WRITE - Admin UI)
 # ============================
+# For Docker: maps to VAULT_ROLE_ID in nuxt-web container
 NUXT_VAULT_ROLE_ID=${NUXT_ADMIN_ROLE_ID}
 NUXT_VAULT_SECRET_ID=${NUXT_ADMIN_SECRET_ID}
 
 # ============================
 # Python AI Service Credentials (READ-ONLY)
 # ============================
+# For Docker: maps to VAULT_ROLE_ID in python-ai container
 PYTHON_AI_VAULT_ROLE_ID=${PYTHON_AI_ROLE_ID}
 PYTHON_AI_VAULT_SECRET_ID=${PYTHON_AI_SECRET_ID}
 
 # ============================
-# LiveKit Service Credentials (READ-ONLY)
+# LiveKit Voice Service Credentials (READ-ONLY)
 # ============================
+# For Docker: maps to VAULT_ROLE_ID in livekit-voice container
 LIVEKIT_VAULT_ROLE_ID=${LIVEKIT_ROLE_ID}
 LIVEKIT_VAULT_SECRET_ID=${LIVEKIT_SECRET_ID}
 EOF
