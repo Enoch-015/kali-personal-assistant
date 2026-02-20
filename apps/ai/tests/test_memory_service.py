@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from config.settings import GraphitiSettings
+from config.services.graphiti import GraphitiSettings
+from config.providers.openai import OpenAIProvider
 from src.orchestration.memory import MemoryService
 from src.orchestration.models import OrchestrationRequest
 from src.services import graphiti_client as graphiti_module
@@ -131,17 +132,22 @@ async def test_memory_service_with_configured_graphiti_client(monkeypatch) -> No
             return None
 
     dummy_settings = type("DummySettings", (), {})()
+    from config.providers.graph_stores.neo4j import Neo4jStore
+
     dummy_settings.graphiti = GraphitiSettings(
         enabled=True,
-        llm_provider="openai",
-        neo4j_uri="bolt://localhost:7687",
-        neo4j_user="neo4j",
-        neo4j_password="password",
-        openai_api_key="sk-test",
-        openai_model="gpt-4o",
         group_id="default-group",
         build_indices_on_startup=True,
         search_limit=2,
+        llm=OpenAIProvider(
+            api_key="sk-test",
+            model="gpt-4o",
+        ),
+        graph_store=Neo4jStore(
+            uri="bolt://localhost:7687",
+            user="neo4j",
+            password="password",
+        ),
     )
 
     def graphiti_enabled_property(self: object) -> bool:  # type: ignore[explicit-override]

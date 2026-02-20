@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class ResendSettings(BaseModel):
     """Resend email service configuration."""
-    
+
+    model_config = ConfigDict(populate_by_name=True)
+
     api_key: Optional[str] = Field(
         default=None,
         description="API key used for authenticating with Resend.",
@@ -30,3 +32,17 @@ class ResendSettings(BaseModel):
         description="Send messages via Resend when true; otherwise run in dry-run mode.",
         validation_alias=AliasChoices("RESEND_DELIVER", "resend_deliver"),
     )
+
+    @classmethod
+    def from_vault(cls, secrets: dict[str, Any]) -> "ResendSettings":
+        """Build from Vault ``shared`` secrets."""
+        api_key = secrets.get("resend-api-key")
+        deliver = secrets.get("resend-deliver", False)
+        if isinstance(deliver, str):
+            deliver = deliver.strip().lower() in {"1", "true", "yes", "on"}
+        return cls(
+            api_key=api_key,
+            from_address=secrets.get("resend-from-address", "no-reply@kalienterprise.com"),
+            default_recipient=secrets.get("resend-default-recipient"),
+            deliver=bool(deliver) if api_key else False,
+        )

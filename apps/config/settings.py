@@ -9,10 +9,10 @@ This module provides a centralized configuration system that:
 
 Usage:
     from config.settings import get_settings
-    
+
     # In apps/ai/
     settings = get_settings("ai")
-    
+
     # In apps/voice/
     settings = get_settings("voice")
 """
@@ -27,13 +27,17 @@ from dotenv import dotenv_values, load_dotenv
 from pydantic import AliasChoices, Field, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Import all settings modules
-from .graphiti_settings import GraphitiSettings
-from .langgraph_settings import LangGraphSettings
-from .livekit_settings import LiveKitSettings
-from .mongo_settings import MongoSettings
-from .redis_settings import RedisSettings
-from .resend_settings import ResendSettings
+# Import from the new service-settings package
+from .services.graphiti import GraphitiSettings
+from .services.langgraph import LangGraphSettings
+from .services.livekit import LiveKitSettings
+from .services.mongo import MongoSettings
+from .services.redis import RedisSettings
+from .services.resend import ResendSettings
+
+# Ensure the provider registry is populated on first import
+import config.providers as _providers  # noqa: F401
+
 from .utils import coerce_bool, coerce_int, coerce_str
 
 # Re-export for backwards compatibility
@@ -75,11 +79,11 @@ def _get_app_env_path(app_name: str | None) -> Path | None:
 class Settings(BaseSettings):
     """
     Unified settings for all Kali apps.
-    
+
     Aggregates all subsystem configurations into a single settings object.
     Each app loads this with their specific .env overlay.
     """
-    
+
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE_PATH),
         env_file_encoding="utf-8",
@@ -92,7 +96,7 @@ class Settings(BaseSettings):
         description="Active runtime environment. Influences default Redis selection.",
         validation_alias=AliasChoices("AI_ENV", "environment"),
     )
-    
+
     # Subsystem configurations
     redis: RedisSettings = Field(default_factory=RedisSettings)
     mongo: MongoSettings = Field(default_factory=MongoSettings)
@@ -100,7 +104,7 @@ class Settings(BaseSettings):
     langgraph: LangGraphSettings = Field(default_factory=LangGraphSettings)
     graphiti: GraphitiSettings = Field(default_factory=GraphitiSettings)
     livekit: LiveKitSettings = Field(default_factory=LiveKitSettings)
-    
+
     # Override fields
     redis_url_override: Optional[RedisDsn] = Field(
         default=None,
@@ -115,55 +119,130 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _configure_integrations(self) -> "Settings":
-        """Post-validation hook to configure integrations based on env overrides."""
-        # Apply Graphiti env overrides
-        graphiti_env_overrides = self._extract_graphiti_env_overrides()
-        if graphiti_env_overrides:
-            self.graphiti = self.graphiti.model_copy(update=graphiti_env_overrides)
+        """Post-validation hook to wire up integrations from env overrides.
 
-        # Apply Mongo env overrides
-        mongo_env_overrides = self._extract_mongo_env_overrides()
-        if mongo_env_overrides:
-            self.mongo = self.mongo.model_copy(update=mongo_env_overrides)
+        When running locally (no Vault), env vars / .env are merged and
+        passed through each service's ``from_env`` factory so provider
+        registries can resolve the discriminated unions.
+        """
+        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
+        merged = self._build_merged_env(extras)
 
-        # Handle Redis URL override
+        # ---- Graphiti (provider-based + graph store) ----
+        self._apply_graphiti_overrides(merged)
+
+        # ---- LiveKit (provider-based: LLM/TTS/STT) ----
+        self._apply_livekit_overrides(merged)
+
+        # ---- MongoDB ----
+        mongo_updates = self._extract_env_overrides(
+            extras,
+            {
+                "mongo_enabled": ("enabled", coerce_bool),
+                "mongodb_enabled": ("enabled", coerce_bool),
+                "mongo_uri": ("uri", coerce_str),
+                "mongodb_uri": ("uri", coerce_str),
+                "mongo_database": ("database", coerce_str),
+                "mongodb_database": ("database", coerce_str),
+                "mongo_policies_collection": ("policies_collection", coerce_str),
+                "mongodb_policies_collection": ("policies_collection", coerce_str),
+                "mongo_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
+                "mongodb_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
+            },
+        )
+        if mongo_updates:
+            self.mongo = self.mongo.model_copy(update=mongo_updates)
+
+        # ---- Redis ----
         redis_update: dict[str, Any] | None = None
         if self.redis_url_override:
             redis_update = {"url": self.redis_url_override}
         elif self.environment == "production":
             redis_update = {"url": self.redis.url}
-
         if redis_update:
             self.redis = self.redis.model_copy(update=redis_update)
 
-        # Disable Resend delivery if no API key
+        # ---- Resend ----
         if not self.resend.api_key and self.resend.deliver:
             self.resend = self.resend.model_copy(update={"deliver": False})
 
-        # Auto-enable/disable Graphiti based on credentials
-        graphiti_update = {}
-        if self.graphiti.has_credentials and not self.graphiti.enabled:
-            graphiti_update["enabled"] = True
-        if self.graphiti.enabled and not self.graphiti.has_credentials:
-            graphiti_update["enabled"] = False
-        if graphiti_update:
-            self.graphiti = self.graphiti.model_copy(update=graphiti_update)
-
-        # Apply LiveKit env overrides
-        livekit_env_overrides = self._extract_livekit_env_overrides()
-        if livekit_env_overrides:
-            self.livekit = self.livekit.model_copy(update=livekit_env_overrides)
-
-        # Auto-disable LiveKit if no credentials
-        if self.livekit.enabled and not self.livekit.has_credentials:
-            self.livekit = self.livekit.model_copy(update={"enabled": False})
-            
         return self
 
-    # ============================================================
+    # ------------------------------------------------------------------
+    # Graphiti: delegate to the provider-based factory
+    # ------------------------------------------------------------------
+
+    def _apply_graphiti_overrides(self, merged: dict[str, Any]) -> None:
+        """Build / update ``self.graphiti`` from env using the provider registry."""
+        provider = (
+            merged.get("graphiti_llm_provider")
+            or merged.get("graphiti_provider")
+            or merged.get("llm_provider")
+        )
+        graph_store = merged.get("graphiti_graph_store") or merged.get("graph_store")
+
+        if provider or graph_store or any(
+            k.startswith(("graphiti_", "neo4j_")) for k in merged
+        ):
+            new_graphiti = GraphitiSettings.from_env(
+                merged, provider=provider, graph_store=graph_store,
+            )
+            updates: dict[str, Any] = {}
+            for field_name in GraphitiSettings.model_fields:
+                new_val = getattr(new_graphiti, field_name)
+                old_val = getattr(self.graphiti, field_name)
+                if new_val is not None and new_val != old_val:
+                    updates[field_name] = new_val
+            if updates:
+                self.graphiti = self.graphiti.model_copy(update=updates)
+
+        # Auto-enable/disable based on credentials
+        if self.graphiti.has_credentials and not self.graphiti.enabled:
+            self.graphiti = self.graphiti.model_copy(update={"enabled": True})
+        if self.graphiti.enabled and not self.graphiti.has_credentials:
+            self.graphiti = self.graphiti.model_copy(update={"enabled": False})
+
+    # ------------------------------------------------------------------
+    # LiveKit: delegate to the provider-based factory
+    # ------------------------------------------------------------------
+
+    def _apply_livekit_overrides(self, merged: dict[str, Any]) -> None:
+        """Build / update ``self.livekit`` from env using the provider registries."""
+        if any(k.startswith("livekit_") for k in merged):
+            new_livekit = LiveKitSettings.from_env(merged)
+            updates: dict[str, Any] = {}
+            for field_name in LiveKitSettings.model_fields:
+                new_val = getattr(new_livekit, field_name)
+                old_val = getattr(self.livekit, field_name)
+                if new_val is not None and new_val != old_val:
+                    updates[field_name] = new_val
+            if updates:
+                self.livekit = self.livekit.model_copy(update=updates)
+
+        if self.livekit.enabled and not self.livekit.has_credentials:
+            self.livekit = self.livekit.model_copy(update={"enabled": False})
+
+    def _build_merged_env(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Priority: extras > os.environ > .env file.  All keys lower-cased."""
+        merged: dict[str, Any] = {}
+        if _ENV_FILE_PATH.exists():
+            try:
+                for k, v in (dotenv_values(_ENV_FILE_PATH) or {}).items():
+                    if k and v is not None:
+                        merged[k.lower()] = v
+            except Exception:
+                pass
+        for k, v in os.environ.items():
+            merged[k.lower()] = v
+        for k, v in extras.items():
+            if k and v is not None:
+                merged[k.lower()] = v
+        return merged
+
+    # ------------------------------------------------------------------
     # Convenience Properties
-    # ============================================================
-    
+    # ------------------------------------------------------------------
+
     @property
     def redis_url(self) -> RedisDsn:
         return self.redis.url
@@ -174,173 +253,32 @@ class Settings(BaseSettings):
 
     @property
     def livekit_enabled(self) -> bool:
-        """Check if LiveKit is enabled and has valid credentials."""
         return self.livekit.enabled and self.livekit.has_credentials
 
     @property
     def livekit_url(self) -> str:
-        """Get the LiveKit WebSocket URL for client connections."""
         return self.livekit.url
 
     @property
     def livekit_http_url(self) -> str:
-        """Get the LiveKit HTTP URL for server-side API calls."""
         return self.livekit.http_url
 
-    # ============================================================
-    # Environment Override Extraction
-    # ============================================================
-
-    def _extract_graphiti_env_overrides(self) -> dict[str, Any]:
-        """Extract Graphiti settings from environment variables and extras."""
-        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
-
-        mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
-            # General
-            "graphiti_enabled": ("enabled", coerce_bool),
-            "graphiti_llm_provider": ("llm_provider", coerce_str),
-            "graphiti_provider": ("llm_provider", coerce_str),
-            "llm_provider": ("llm_provider", coerce_str),
-            "graphiti_neo4j_uri": ("neo4j_uri", coerce_str),
-            "neo4j_uri": ("neo4j_uri", coerce_str),
-            "graphiti_neo4j_user": ("neo4j_user", coerce_str),
-            "neo4j_user": ("neo4j_user", coerce_str),
-            "graphiti_neo4j_password": ("neo4j_password", coerce_str),
-            "neo4j_password": ("neo4j_password", coerce_str),
-            "graphiti_group_id": ("group_id", coerce_str),
-            "group_id": ("group_id", coerce_str),
-            "graphiti_build_indices": ("build_indices_on_startup", coerce_bool),
-            "graphiti_build_indexes": ("build_indices_on_startup", coerce_bool),
-            "graphiti_search_limit": ("search_limit", coerce_int),
-            "graphiti_search_results_limit": ("search_limit", coerce_int),
-            # OpenAI
-            "openai_api_key": ("openai_api_key", coerce_str),
-            "graphiti_openai_api_key": ("openai_api_key", coerce_str),
-            "open_ai_key": ("openai_api_key", coerce_str),
-            "openai_model": ("openai_model", coerce_str),
-            "graphiti_openai_model": ("openai_model", coerce_str),
-            "openai_small_model": ("openai_small_model", coerce_str),
-            "graphiti_openai_small_model": ("openai_small_model", coerce_str),
-            "openai_embedding_model": ("openai_embedding_model", coerce_str),
-            "graphiti_openai_embedding_model": ("openai_embedding_model", coerce_str),
-            # Azure OpenAI
-            "azure_openai_endpoint": ("azure_openai_endpoint", coerce_str),
-            "azure_openai_deployment_name": ("azure_openai_deployment_name", coerce_str),
-            "azure_openai_api_version": ("azure_openai_api_version", coerce_str),
-            "azure_openai_embedding_api_key": ("azure_openai_embedding_api_key", coerce_str),
-            "azure_openai_embedding_endpoint": ("azure_openai_embedding_endpoint", coerce_str),
-            "azure_openai_embedding_deployment_name": ("azure_openai_embedding_deployment_name", coerce_str),
-            "azure_openai_embedding_api_version": ("azure_openai_embedding_api_version", coerce_str),
-            "azure_openai_use_managed_identity": ("azure_openai_use_managed_identity", coerce_bool),
-            # Gemini
-            "graphiti_gemini_api_key": ("gemini_api_key", coerce_str),
-            "google_api_key": ("gemini_api_key", coerce_str),
-            "graphiti_gemini_model": ("gemini_model", coerce_str),
-            "gemini_model": ("gemini_model", coerce_str),
-            "graphiti_gemini_embedding_model": ("gemini_embedding_model", coerce_str),
-            "gemini_embedding_model": ("gemini_embedding_model", coerce_str),
-            "graphiti_gemini_reranker_model": ("gemini_reranker_model", coerce_str),
-            "gemini_reranker_model": ("gemini_reranker_model", coerce_str),
-            # Anthropic
-            "anthropic_api_key": ("anthropic_api_key", coerce_str),
-            "graphiti_anthropic_api_key": ("anthropic_api_key", coerce_str),
-            "anthropic_model": ("anthropic_model", coerce_str),
-            "graphiti_anthropic_model": ("anthropic_model", coerce_str),
-            "anthropic_small_model": ("anthropic_small_model", coerce_str),
-            "graphiti_anthropic_small_model": ("anthropic_small_model", coerce_str),
-            # Groq
-            "groq_api_key": ("groq_api_key", coerce_str),
-            "graphiti_groq_api_key": ("groq_api_key", coerce_str),
-            "groq_model": ("groq_model", coerce_str),
-            "graphiti_groq_model": ("groq_model", coerce_str),
-            "groq_small_model": ("groq_small_model", coerce_str),
-            "graphiti_groq_small_model": ("groq_small_model", coerce_str),
-            # Ollama
-            "ollama_base_url": ("ollama_base_url", coerce_str),
-            "graphiti_ollama_base_url": ("ollama_base_url", coerce_str),
-            "ollama_model": ("ollama_model", coerce_str),
-            "graphiti_ollama_model": ("ollama_model", coerce_str),
-            "ollama_embedding_model": ("ollama_embedding_model", coerce_str),
-            "graphiti_ollama_embedding_model": ("ollama_embedding_model", coerce_str),
-            "ollama_embedding_dim": ("ollama_embedding_dim", coerce_int),
-            "graphiti_ollama_embedding_dim": ("ollama_embedding_dim", coerce_int),
-            # Generic OpenAI-compatible
-            "generic_api_key": ("generic_api_key", coerce_str),
-            "graphiti_generic_api_key": ("generic_api_key", coerce_str),
-            "generic_model": ("generic_model", coerce_str),
-            "graphiti_generic_model": ("generic_model", coerce_str),
-            "generic_small_model": ("generic_small_model", coerce_str),
-            "graphiti_generic_small_model": ("generic_small_model", coerce_str),
-            "generic_base_url": ("generic_base_url", coerce_str),
-            "graphiti_generic_base_url": ("generic_base_url", coerce_str),
-            "generic_embedding_model": ("generic_embedding_model", coerce_str),
-            "graphiti_generic_embedding_model": ("generic_embedding_model", coerce_str),
-        }
-
-        return self._extract_env_overrides(extras, mapping)
-
-    def _extract_mongo_env_overrides(self) -> dict[str, Any]:
-        """Extract MongoDB settings from environment variables and extras."""
-        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
-
-        mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
-            "mongo_enabled": ("enabled", coerce_bool),
-            "mongodb_enabled": ("enabled", coerce_bool),
-            "mongo_uri": ("uri", coerce_str),
-            "mongodb_uri": ("uri", coerce_str),
-            "mongo_database": ("database", coerce_str),
-            "mongodb_database": ("database", coerce_str),
-            "mongo_policies_collection": ("policies_collection", coerce_str),
-            "mongodb_policies_collection": ("policies_collection", coerce_str),
-            "mongo_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
-            "mongodb_server_selection_timeout_ms": ("server_selection_timeout_ms", coerce_int),
-        }
-
-        return self._extract_env_overrides(extras, mapping)
-
-    def _extract_livekit_env_overrides(self) -> dict[str, Any]:
-        """Extract LiveKit settings from environment variables and extras."""
-        extras: dict[str, Any] = getattr(self, "model_extra", {}) or {}
-
-        mapping: dict[str, tuple[str, Callable[[Any], Any]]] = {
-            # Core settings
-            "livekit_enabled": ("enabled", coerce_bool),
-            "livekit_url": ("url", coerce_str),
-            "livekit_server_url": ("server_url", coerce_str),
-            "livekit_api_key": ("api_key", coerce_str),
-            "livekit_api_secret": ("api_secret", coerce_str),
-            # AI Provider keys
-            "livekit_gemini_api_key": ("gemini_api_key", coerce_str),
-            "livekit_openai_api_key": ("openai_api_key", coerce_str),
-            "livekit_deepgram_api_key": ("deepgram_api_key", coerce_str),
-            "livekit_azure_api_key": ("azure_api_key", coerce_str),
-            "livekit_azure_region": ("azure_region", coerce_str),
-            # Model settings
-            "livekit_deepgram_model": ("deepgram_model", coerce_str),
-            "livekit_azure_tts_voice": ("azure_tts_voice", coerce_str),
-            "livekit_openai_model": ("openai_model", coerce_str),
-            "livekit_gemini_model": ("gemini_model", coerce_str),
-            # Room settings
-            "livekit_room_empty_timeout": ("room_empty_timeout", coerce_int),
-            "livekit_room_max_participants": ("room_max_participants", coerce_int),
-        }
-
-        return self._extract_env_overrides(extras, mapping)
+    # ------------------------------------------------------------------
+    # Generic env-override helper (used for Mongo, LiveKit, etc.)
+    # ------------------------------------------------------------------
 
     def _extract_env_overrides(
         self,
         extras: dict[str, Any],
         mapping: dict[str, tuple[str, Callable[[Any], Any]]],
     ) -> dict[str, Any]:
-        """Generic helper to extract env overrides based on a mapping."""
         overrides: dict[str, Any] = {}
         extras_lower = {
-            (key or "").lower(): value 
-            for key, value in extras.items() 
+            (key or "").lower(): value
+            for key, value in extras.items()
             if value is not None
         }
-        
-        # Load env file values
+
         env_file_values: dict[str, Any] = {}
         if _ENV_FILE_PATH.exists():
             try:
@@ -353,7 +291,6 @@ class Settings(BaseSettings):
                 env_file_values = {}
 
         for alias, (field_name, transform) in mapping.items():
-            # Priority: extras > os.environ > env file
             value = extras_lower.get(alias)
             if value is None:
                 env_key = alias.upper()
@@ -386,50 +323,41 @@ def get_settings(
 ) -> Settings:
     """
     Get settings with optional app-specific .env override.
-    
+
     Loading order (later values override earlier):
     1. apps/config/.env (shared base configuration)
     2. apps/{app_name}/.env (app-specific overrides)
     3. Environment variables (os.environ)
     4. Explicit overrides passed to this function
-    
+
     Args:
         app_name: The app folder name (e.g., "ai", "voice") whose .env to load
         override: Explicit dict overrides to apply on top
         force_reload: If True, bypass cache and reload from env files
-        
+
     Returns:
         Configured Settings instance
-        
-    Example:
-        # In apps/ai/src/main.py
-        settings = get_settings("ai")  # Loads apps/config/.env + apps/ai/.env
-        
-        # In apps/voice/agent.py  
-        settings = get_settings("voice")  # Loads apps/config/.env + apps/voice/.env
     """
     cache_key = app_name if not override else None
-    
-    # Return cached if available and not forcing reload
+
     if not force_reload and cache_key and cache_key in _settings_cache and not override:
         return _settings_cache[cache_key]
-    
-    # Step 1: Load shared base config (apps/config/.env)
+
+    # Step 1: Load shared base config
     if _ENV_FILE_PATH.exists():
         load_dotenv(_ENV_FILE_PATH, override=False)
-    
-    # Step 2: Load app-specific .env (apps/{app_name}/.env) - overrides base
+
+    # Step 2: Load app-specific .env
     app_env_path = _get_app_env_path(app_name)
     if app_env_path:
         load_dotenv(app_env_path, override=True)
-    
-    # Step 3 & 4: Create settings (picks up env vars + explicit overrides)
+
+    # Step 3 & 4: Create settings
     settings = Settings(**(override or {}))
-    
-    # Cache if no explicit overrides
+
     if cache_key:
         _settings_cache[cache_key] = settings
-    
+
     return settings
 
 

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from pydantic import AliasChoices, BaseModel, Field
+from typing import Any
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class MongoSettings(BaseModel):
     """MongoDB connection and collection configuration."""
-    
+
+    model_config = ConfigDict(populate_by_name=True)
+
     enabled: bool = Field(
         default=True,
         description="Enable MongoDB-backed policy storage when true.",
@@ -38,3 +42,16 @@ class MongoSettings(BaseModel):
             "mongo_server_selection_timeout_ms",
         ),
     )
+
+    @classmethod
+    def from_vault(cls, secrets: dict[str, Any]) -> "MongoSettings":
+        """Build from Vault ``databases`` + ``python-ai`` secrets."""
+        return cls(
+            enabled=True,
+            uri=secrets.get("mongodb-uri", "mongodb://localhost:27017"),
+            database=secrets.get("mongodb-database", "kali_policy"),
+            policies_collection=secrets.get("mongodb-policies-collection", "policy_directives"),
+            server_selection_timeout_ms=int(
+                secrets.get("mongodb-server-selection-timeout-ms", 250)
+            ),
+        )

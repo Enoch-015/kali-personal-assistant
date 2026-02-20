@@ -69,14 +69,21 @@ class GraphitiClient:
             logger.warning("Graphiti credentials incomplete; disabling integration")
             return None
 
-        neo4j_uri = graphiti_settings.neo4j_uri
-        neo4j_user = graphiti_settings.neo4j_user
-        neo4j_password = graphiti_settings.neo4j_password
-        if not (neo4j_uri and neo4j_user and neo4j_password):
-            logger.warning("Graphiti Neo4j credentials missing; disabling integration")
+        graph_store = graphiti_settings.graph_store
+        if graph_store is None or not graph_store.is_configured:
+            logger.warning("Graphiti graph store not configured; disabling integration")
             return None
 
-        provider = (graphiti_settings.llm_provider or "openai").lower()
+        neo4j_uri = graph_store.uri
+        neo4j_user = graph_store.user
+        neo4j_password = graph_store.password
+
+        llm = graphiti_settings.llm
+        if llm is None or not llm.is_configured:
+            logger.warning("Graphiti LLM provider not configured; disabling integration")
+            return None
+
+        provider = llm.provider
         kwargs: Dict[str, Any] = {}
 
         if provider == "gemini":
@@ -91,17 +98,14 @@ class GraphitiClient:
                     ", ".join(missing_components),
                 )
                 return None
-            if not graphiti_settings.gemini_api_key:
-                logger.warning("Graphiti Gemini API key missing; set GOOGLE_API_KEY or GRAPHITI_GEMINI_API_KEY")
-                return None
 
             llm_config = cast(Any, GeminiLLMConfig)(
-                api_key=graphiti_settings.gemini_api_key,
-                model=graphiti_settings.gemini_model,
+                api_key=llm.api_key,
+                model=llm.model,
             )
             embedder_config = cast(Any, GeminiEmbedderConfig)(
-                api_key=graphiti_settings.gemini_api_key,
-                embedding_model=graphiti_settings.gemini_embedding_model,
+                api_key=llm.api_key,
+                embedding_model=llm.embedding_model,
             )
 
             kwargs.update(
@@ -110,15 +114,12 @@ class GraphitiClient:
             )
             if GeminiRerankerClient is not None and GeminiLLMConfig is not None:
                 reranker_config = cast(Any, GeminiLLMConfig)(
-                    api_key=graphiti_settings.gemini_api_key,
-                    model=graphiti_settings.gemini_reranker_model,
+                    api_key=llm.api_key,
+                    model=llm.reranker_model,
                 )
                 kwargs["cross_encoder"] = cast(Any, GeminiRerankerClient)(config=reranker_config)
             else:
                 logger.info("Graphiti Gemini reranker client not available; continuing without cross encoder")
-        elif provider not in {"openai", "azure", "anthropic", "groq", "ollama", "generic"}:
-            logger.warning("Unsupported Graphiti LLM provider '%s'", provider)
-            return None
 
         try:
             return GraphitiSDK(  # type: ignore[call-arg]
