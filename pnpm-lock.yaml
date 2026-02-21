@@ -16,6 +16,21 @@ importers:
 
   apps/web:
     dependencies:
+      lucide-vue-next:
+        specifier: ^0.544.0
+        version: 0.544.0(vue@3.5.22(typescript@5.9.3))
+      node-vault:
+        specifier: ^0.10.9
+        version: 0.10.9
+    devDependencies:
+      concurrently:
+        specifier: ^9.2.1
+        version: 9.2.1
+
+  apps/ai: {}
+
+  apps/web:
+    dependencies:
       '@libsql/client':
         specifier: ^0.15.15
         version: 0.15.15
