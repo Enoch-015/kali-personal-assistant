@@ -8,6 +8,20 @@
       "when": 1759267835625,
       "tag": "0000_tiny_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1768417029046,
+      "tag": "0001_unknown_human_torch",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1768430114264,
+      "tag": "0002_overconfident_phantom_reporter",
+      "breakpoints": true
     }
   ]
 }
