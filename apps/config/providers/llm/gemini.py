@@ -40,6 +40,19 @@ class GeminiProvider(BaseLLMProvider):
             reranker_model=env.get("gemini_reranker_model") or env.get("GEMINI_RERANKER_MODEL") or "gemini-2.0-flash-exp",
         )
 
+    # Gemini models that support multimodal (vision) input
+    _VISION_MODELS: ClassVar[set[str]] = {
+        "gemini-2.0-flash", "gemini-2.0-flash-exp", "gemini-2.0-flash-lite",
+        "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
+        "gemini-2.5-pro", "gemini-2.5-flash",
+    }
+
     @property
     def is_configured(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def supports_vision(self) -> bool:
+        """Check if the configured Gemini model supports vision input."""
+        model_lower = self.model.lower()
+        return any(model_lower == v or model_lower.startswith(f"{v}-") for v in self._VISION_MODELS)

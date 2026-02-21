@@ -13,7 +13,7 @@
  * To delete a key, use the DELETE endpoint or set value to null.
  */
 
-import { getVaultClient } from "~/server/utils/vault";
+import { getVaultClient } from "~~/server/utils/vault";
 
 export default defineEventHandler(async (event) => {
   // TODO: Add admin authentication check here

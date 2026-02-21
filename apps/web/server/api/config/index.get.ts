@@ -2,25 +2,23 @@
  * GET /api/config
  *
  * Get the current user's configuration.
- * Requires session authentication.
+ * Accepts session authentication or ephemeral key authentication.
  */
 import { eq } from "drizzle-orm";
 import crypto from "uncrypto";
 
-import { auth } from "../../../lib/auth";
 import db from "../../../lib/db";
 import { userConfig } from "../../../lib/db/schema";
+import { getAnyAuth } from "../../utils/ephemeral-auth";
 
 function uint8ArrayToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 export default defineEventHandler(async (event) => {
-  const session = await auth.api.getSession({
-    headers: event.headers,
-  });
+  const authResult = await getAnyAuth(event);
 
-  if (!session?.user) {
+  if (!authResult) {
     throw createError({
       statusCode: 401,
       statusMessage: "Unauthorized",
@@ -28,11 +26,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const userId = authResult.userId;
+
   try {
     let [config] = await db
       .select()
       .from(userConfig)
-      .where(eq(userConfig.userId, session.user.id))
+      .where(eq(userConfig.userId, userId))
       .limit(1);
 
     // If no config exists, create default one
@@ -42,13 +42,13 @@ export default defineEventHandler(async (event) => {
 
       await db.insert(userConfig).values({
         id,
-        userId: session.user.id,
+        userId,
       });
 
       [config] = await db
         .select()
         .from(userConfig)
-        .where(eq(userConfig.userId, session.user.id))
+        .where(eq(userConfig.userId, userId))
         .limit(1);
     }
 

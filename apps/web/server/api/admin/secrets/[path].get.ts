@@ -10,7 +10,7 @@
  *   - masked=true: Returns masked values (default: true for GET requests)
  */
 
-import { getVaultClient } from "~/server/utils/vault";
+import { getVaultClient } from "~~/server/utils/vault";
 
 /**
  * Mask sensitive values for display

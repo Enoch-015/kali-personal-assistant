@@ -48,3 +48,8 @@ class BaseLLMProvider(BaseModel):
     def is_configured(self) -> bool:
         """Return ``True`` when all required credentials are present."""
         raise NotImplementedError
+
+    @property
+    def supports_vision(self) -> bool:
+        """Return ``True`` if the configured model supports multimodal (vision) input."""
+        return False

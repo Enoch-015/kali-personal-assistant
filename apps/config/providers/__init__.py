@@ -38,6 +38,7 @@ from .tts import (
     load_tts_provider,
     get_available_tts_providers,
     AzureTTSProvider,
+    CartesiaTTSProvider,
 )
 
 # ── STT providers ────────────────────────────────────────────
@@ -70,6 +71,7 @@ __all__ = [
     "load_tts_provider",
     "get_available_tts_providers",
     "AzureTTSProvider",
+    "CartesiaTTSProvider",
     # STT
     "BaseSTTProvider",
     "load_stt_provider",

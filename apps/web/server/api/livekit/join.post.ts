@@ -99,7 +99,11 @@ export default defineEventHandler(async (event) => {
         metadata: {
           createdBy: auth.userId,
           sessionId,
+          session_id: sessionId,
           ephemeralKeyId,
+          // Include the raw ephemeral key so the LiveKit agent can
+          // authenticate back to the backend API
+          ...(ephemeralKey && { ephemeral_api_key: ephemeralKey }),
           ...metadata,
         },
       });
@@ -110,7 +114,11 @@ export default defineEventHandler(async (event) => {
       participant: participantName,
       userId: auth.userId,
       sessionId,
+      session_id: sessionId,
       ephemeralKeyId,
+      // Include the raw ephemeral key so the LiveKit agent can
+      // authenticate back to the backend API
+      ...(ephemeralKey && { ephemeral_api_key: ephemeralKey }),
       authType: auth.type,
       ...metadata,
     };

@@ -12,7 +12,7 @@
  * Body: { secrets: { key1: "value1", key2: "value2" } }
  */
 
-import { getVaultClient } from "~/server/utils/vault";
+import { getVaultClient } from "~~/server/utils/vault";
 
 export default defineEventHandler(async (event) => {
   // TODO: Add admin authentication check here

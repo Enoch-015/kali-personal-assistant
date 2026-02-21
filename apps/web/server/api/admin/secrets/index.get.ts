@@ -7,7 +7,7 @@
  * Requires admin authentication.
  */
 
-import { getVaultClient } from "~/server/utils/vault";
+import { getVaultClient } from "~~/server/utils/vault";
 
 export default defineEventHandler(async (event) => {
   // TODO: Add admin authentication check here

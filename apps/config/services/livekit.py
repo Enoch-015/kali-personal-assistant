@@ -24,7 +24,7 @@ from ..providers.stt.base import BaseSTTProvider
 from ..providers.stt.deepgram import DeepgramSTTProvider
 from ..providers.tts.azure import AzureTTSProvider
 from ..providers.tts.base import BaseTTSProvider
-
+from ..providers.tts.cartesia import CartesiaTTSProvider
 # Discriminated unions scoped to LiveKit
 LiveKitLLMProvider = Annotated[
     Union[OpenAIProvider, GeminiProvider],
@@ -32,7 +32,7 @@ LiveKitLLMProvider = Annotated[
 ]
 
 TTSProvider = Annotated[
-    Union[AzureTTSProvider],
+    Union[AzureTTSProvider, CartesiaTTSProvider],
     Field(discriminator="provider"),
 ]
 
@@ -74,7 +74,7 @@ class LiveKitSettings(BaseModel):
         description="API secret for authenticating with the LiveKit server.",
     )
     backend_url: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:3000",
         description="URL of the backend service that LiveKit agents connect to.",
     )
 
@@ -101,7 +101,19 @@ class LiveKitSettings(BaseModel):
         default=20,
         description="Maximum participants per room.",
     )
-
+    # ── Multimodal / Vision Settings ─────────────────────────────────────
+    vision_enabled: bool = Field(
+        default=False,
+        description="Enable multimodal vision (camera / image upload) support.",
+    )
+    noise_cancellation_enabled: bool = Field(
+        default=True,
+        description="Enable noise cancellation plugin.",
+    )
+    turn_detection_enabled: bool = Field(
+        default=True,
+        description="Enable multilingual turn detection.",
+    )
     # ==================================================================
     # Computed properties
     # ==================================================================
@@ -172,6 +184,19 @@ class LiveKitSettings(BaseModel):
     def has_azure_tts(self) -> bool:
         return self.tts is not None and self.tts.provider == "azure" and self.tts.is_configured
 
+    @computed_field
+    @property
+    def has_cartesia_tts(self) -> bool:
+        return self.tts is not None and self.tts.provider == "cartesia" and self.tts.is_configured
+
+    @computed_field
+    @property
+    def supports_multimodal(self) -> bool:
+        """True when the LLM provider supports vision AND vision is enabled."""
+        if not self.vision_enabled or self.llm is None:
+            return False
+        return self.llm.supports_vision
+
     def get_preferred_llm_provider(self) -> str | None:
         """Return the active LLM provider name, or ``None``."""
         return self.llm.provider if self.llm else None
@@ -230,16 +255,24 @@ class LiveKitSettings(BaseModel):
             if not stt_instance.is_configured:
                 stt_instance = None
 
+        # Vision / multimodal
+        vision_enabled = str(
+            livekit_secrets.get("vision-enabled")
+            or livekit_secrets.get("vision_enabled")
+            or "false"
+        ).lower() in ("1", "true", "yes")
+
         return cls(
             enabled=True,
             url=livekit_secrets.get("url", "ws://localhost:7880"),
             server_url=livekit_secrets.get("server-url"),
             api_key=livekit_secrets.get("api-key", ""),
             api_secret=livekit_secrets.get("api-secret", ""),
-            backend_url=livekit_secrets.get("backend-url", "http://localhost:8000"),
+            backend_url=livekit_secrets.get("backend-url", "http://localhost:3000"),
             llm=llm_instance,
             tts=tts_instance,
             stt=stt_instance,
+            vision_enabled=vision_enabled,
             room_empty_timeout=int(livekit_secrets.get("room-empty-timeout", 600)),
             room_max_participants=int(livekit_secrets.get("room-max-participants", 20)),
         )
@@ -264,32 +297,58 @@ class LiveKitSettings(BaseModel):
                 llm_instance = llm_cls.from_env(env)
         else:
             # Auto-detect: prefer gemini if key present, then openai
-            gemini_key = env.get("livekit_gemini_api_key") or env.get("GOOGLE_API_KEY")
-            openai_key = env.get("livekit_openai_api_key") or env.get("OPENAI_API_KEY")
+            # Note: _build_merged_env lowercases all keys, so check lowercase too
+            gemini_key = env.get("livekit_gemini_api_key") or env.get("google_api_key") or env.get("GOOGLE_API_KEY")
+            openai_key = env.get("livekit_openai_api_key") or env.get("openai_api_key") or env.get("OPENAI_API_KEY")
             if gemini_key:
                 llm_instance = GeminiProvider(api_key=gemini_key, model=env.get("livekit_gemini_model", "gemini-2.0-flash-exp"))
             elif openai_key:
                 llm_instance = OpenAIProvider(api_key=openai_key, model=env.get("livekit_openai_model", "gpt-4o-mini"))
 
-        # TTS
+        # TTS — prefer Cartesia if key present, else Azure
         tts_instance: BaseTTSProvider | None = None
-        azure_key = env.get("livekit_azure_api_key") or env.get("AZURE_SPEECH_KEY")
-        azure_region = env.get("livekit_azure_region") or env.get("AZURE_SPEECH_REGION")
-        if azure_key and azure_region:
-            tts_instance = AzureTTSProvider(
-                api_key=azure_key,
-                region=azure_region,
-                voice=env.get("livekit_azure_tts_voice", "en-NG-AbeoNeural"),
-            )
+        preferred_tts = (
+            env.get("livekit_preferred_tts")
+            or env.get("LIVEKIT_PREFERRED_TTS")
+        )
+        if preferred_tts:
+            tts_cls = BaseTTSProvider._registry.get(preferred_tts.lower())
+            if tts_cls is not None:
+                tts_instance = tts_cls.from_env(env)
+                if not tts_instance.is_configured:
+                    tts_instance = None
+        else:
+            # Auto-detect: Cartesia first, then Azure
+            from ..providers.tts.cartesia import CartesiaTTSProvider as _Cartesia
+            cartesia_key = env.get("cartesia_api_key") or env.get("CARTESIA_API_KEY")
+            azure_key = env.get("livekit_azure_api_key") or env.get("azure_speech_key") or env.get("AZURE_SPEECH_KEY")
+            azure_region = env.get("livekit_azure_region") or env.get("azure_speech_region") or env.get("AZURE_SPEECH_REGION")
+            if cartesia_key:
+                tts_instance = _Cartesia(
+                    api_key=cartesia_key,
+                    model=env.get("cartesia_model", "sonic-2"),
+                    voice=env.get("cartesia_voice", "f786b574-daa5-4673-aa0c-cbe3e8534c02"),
+                )
+            elif azure_key and azure_region:
+                tts_instance = AzureTTSProvider(
+                    api_key=azure_key,
+                    region=azure_region,
+                    voice=env.get("livekit_azure_tts_voice", "en-NG-AbeoNeural"),
+                )
 
         # STT
         stt_instance: BaseSTTProvider | None = None
-        deepgram_key = env.get("livekit_deepgram_api_key") or env.get("DEEPGRAM_API_KEY")
+        deepgram_key = env.get("livekit_deepgram_api_key") or env.get("deepgram_api_key") or env.get("DEEPGRAM_API_KEY")
         if deepgram_key:
             stt_instance = DeepgramSTTProvider(
                 api_key=deepgram_key,
                 model=env.get("livekit_deepgram_model", "nova-2"),
+                language=env.get("livekit_deepgram_language", "en"),
             )
+
+        # Vision / multimodal
+        from ..utils import coerce_bool as _cb
+        vision_enabled = _cb(env.get("livekit_vision_enabled", False))
 
         return cls(
             enabled=coerce_bool(env.get("livekit_enabled", True)),
@@ -297,10 +356,11 @@ class LiveKitSettings(BaseModel):
             server_url=env.get("livekit_server_url"),
             api_key=env.get("livekit_api_key", ""),
             api_secret=env.get("livekit_api_secret", ""),
-            backend_url=env.get("livekit_backend_url", "http://localhost:8000"),
+            backend_url=env.get("livekit_backend_url", "http://localhost:3000"),
             llm=llm_instance,
             tts=tts_instance,
             stt=stt_instance,
+            vision_enabled=vision_enabled,
             room_empty_timeout=int(env.get("livekit_room_empty_timeout", 600)),
             room_max_participants=int(env.get("livekit_room_max_participants", 20)),
         )

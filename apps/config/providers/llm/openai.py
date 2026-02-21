@@ -40,6 +40,19 @@ class OpenAIProvider(BaseLLMProvider):
             embedding_model=env.get("openai_embedding_model") or env.get("OPENAI_EMBEDDING_MODEL") or "text-embedding-3-small",
         )
 
+    # Models known to support vision / multimodal input
+    _VISION_MODELS: ClassVar[set[str]] = {
+        "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-vision-preview",
+        "o1", "o1-mini", "o3", "o3-mini", "o4-mini",
+    }
+
     @property
     def is_configured(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def supports_vision(self) -> bool:
+        """Check if the configured model supports vision input."""
+        model_lower = self.model.lower()
+        # Exact match or prefix match (e.g. "gpt-4o-2024-05-13")
+        return any(model_lower == v or model_lower.startswith(f"{v}-") for v in self._VISION_MODELS)

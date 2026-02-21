@@ -361,4 +361,4 @@ def get_backend_request_service(
     if ephemeral_key:
         _default_service.set_ephemeral_key(ephemeral_key)
     
-    return _default_service and
+    return _default_service

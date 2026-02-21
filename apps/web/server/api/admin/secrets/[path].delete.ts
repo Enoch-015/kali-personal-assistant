@@ -13,7 +13,7 @@
  *   - confirm=true: Required to delete entire path
  */
 
-import { getVaultClient } from "~/server/utils/vault";
+import { getVaultClient } from "~~/server/utils/vault";
 
 export default defineEventHandler(async (event) => {
   // TODO: Add admin authentication check here

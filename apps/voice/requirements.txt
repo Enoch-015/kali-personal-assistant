@@ -1,6 +1,13 @@
-livekit-api==1.0.3
+livekit-agents[deepgram,openai,cartesia,silero,turn-detector,google]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+livekit-plugins-azure~=0.4
+livekit-api~=1.0
+livekit
 python-dotenv>=1.0.0
 pydantic>=2.7,<3
 pydantic-settings>=2.2
+aiohttp>=3.9.0
 # HashiCorp Vault client
 hvac>=2.1.0
+fastmcp
+livekit-agents[mcp]
