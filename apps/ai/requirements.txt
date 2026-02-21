@@ -1,0 +1,50 @@
+uvicorn
+sqlalchemy
+sqlmodel
+alembic
+psycopg2-binary
+slowapi
+python-dotenv
+pyjwt
+# Upgrade FastAPI & Pydantic (v2) and let FastAPI manage Starlette version
+fastapi>=0.112,<0.115
+pydantic>=2.7,<3
+pydantic-settings>=2.2
+bcrypt==4.0.1
+python-multipart
+email-validator
+authlib
+cryptography
+itsdangerous==2.2.0
+passlib
+azure-storage-blob>=12.20.0
+livekit-api==1.0.3
+redis>=5.0.0
+langgraph>=0.0.40
+langchain-core>=0.2.7
+langchain-community>=0.2.6
+langchain-openai>=0.1.7
+graphiti-core[google-genai]>=0.4.4
+pymongo>=4.6.0
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+resend==2.19.0
+# HashiCorp Vault client
+hvac>=2.1.0
+# HTTP testing
+# Pin httpx to <0.28 to avoid starlette.testclient incompatibility with httpx 0.28+
+httpx>=0.24.0,<0.28
+
+# Database testing
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Test reporting
+pytest-html>=3.2.0   # HTML test reports
+pytest-cov>=4.1.0    # Coverage reporting
+
+# For mocking if needed
+pytest-mock>=3.11.0
+
+
+# Removed: fastapi_jwt_auth (replaced with custom lightweight JWT service)
+# Removed explicit starlette pin & old pydantic v1 pin

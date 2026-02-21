@@ -1,0 +1,73 @@
+name: Test Python API
+
+on:
+  push:
+    branches:
+      - main
+      - workingdir
+    paths:
+      - 'apps/ai/**'
+      - '.github/workflows/test-ai.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'apps/ai/**'
+
+jobs:
+  test:
+    name: Test FastAPI
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'apps/ai/requirements.txt'
+
+      - name: Install dependencies
+        working-directory: ./apps/ai
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run tests
+        working-directory: ./apps/ai
+        run: |
+          # Add your test command here when you have tests
+          # pytest tests/
+          echo "No tests yet - skipping"
+
+  lint:
+    name: Lint Python Code
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black
+
+      - name: Run Ruff
+        working-directory: ./apps/ai
+        run: ruff check src/ || echo "Ruff check completed with warnings"
+
+      - name: Check formatting with Black
+        working-directory: ./apps/ai
+        run: black --check src/ || echo "Black check completed with warnings"
