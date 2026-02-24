@@ -203,4 +203,4 @@ All secrets are managed through the `production` environment in GitHub.
 
 ## 📄 License
 
-[Your License Here]
+This project is licensed under the [MIT License](LICENSE).
