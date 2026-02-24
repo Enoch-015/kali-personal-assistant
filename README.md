@@ -1,4 +1,8 @@
-# Kali 📚 Documentation
+# Kali Personal Assistant
+
+A monorepo containing the Nuxt.js frontend, FastAPI AI service, LiveKit voice agent, and shared configuration for the Kali Personal Assistant application.
+
+## 📚 Documentation
 
 Detailed documentation is available in the [`docs/`](docs/) folder:
 
@@ -7,28 +11,24 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 - **[VS Code Configuration](docs/VSCODE_SETUP.md)** - Fix TypeScript/ESLint issues
 - **[Vercel Configuration](docs/VERCEL_SETUP.md)** - Vercel dashboard setup
 - **[GitHub Environments](docs/GITHUB_ENVIRONMENTS.md)** - GitHub secrets management
-- **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verificationnal Assistant
-
-A monorepo containing both the Nuxt.js frontend and FastAPI backend for the Kali Personal Assistant application.
-
-## � Documentation
-
-Detailed documentation is available in the [`docs/`](docs/) folder:
-
-- **[Quick Reference](docs/QUICK_REFERENCE.md)** - Command cheat sheet
-- **[Monorepo Setup Guide](docs/MONOREPO_SETUP.md)** - Detailed setup instructions
-- **[Vercel Configuration](docs/VERCEL_SETUP.md)** - Vercel dashboard setup
 - **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** - Pre-deployment verification
+- **[Config Architecture](docs/CONFIG_ARCHITECTURE.md)** - Shared config layer design
+- **[Vault Setup](docs/VAULT_SETUP.md)** - HashiCorp Vault configuration
 
-## �📁 Project Structure
+## 📁 Project Structure
 
 ```
 kali-personal-assistant/
 ├── apps/
 │   ├── web/          # Nuxt.js frontend application
-│   └── api/          # FastAPI backend application
+│   ├── ai/           # FastAPI + LangGraph AI orchestration service
+│   ├── voice/        # LiveKit voice agent
+│   └── config/       # Shared configuration layer (Vault, providers, settings)
+├── docs/             # Project documentation
+├── scripts/          # Setup and utility scripts
 ├── .github/
 │   └── workflows/    # CI/CD workflows
+├── docker-compose.yaml
 ├── package.json      # Root package.json for monorepo
 └── pnpm-workspace.yaml
 ```
@@ -40,6 +40,7 @@ kali-personal-assistant/
 - Node.js 20+
 - pnpm 9+
 - Python 3.11+
+- Docker & Docker Compose (for local infrastructure)
 
 ### Installation
 
@@ -49,15 +50,14 @@ git clone <your-repo-url>
 cd kali-personal-assistant
 ```
 
-2. Install dependencies:
+2. Install Node.js dependencies:
 ```bash
-# Install Node.js dependencies for web app
 pnpm install
 ```
 
-3. Set up Python environment for API:
+3. Set up Python environment for the AI service:
 ```bash
-cd apps/api
+cd apps/ai
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -66,10 +66,18 @@ cd ../..
 
 4. Configure environment variables:
 ```bash
-# Copy example env files and update them
+# Copy the root example env file and fill in your credentials
+cp .env.example .env
+# Also copy the web-specific env file
 cp apps/web/.env.example apps/web/.env
-# Edit apps/web/.env with your credentials
 ```
+
+5. Start local infrastructure (Redis, Neo4j, MongoDB, Vault, LiveKit):
+```bash
+docker compose up -d
+```
+
+See [`docs/VAULT_SETUP.md`](docs/VAULT_SETUP.md) and the scripts in `scripts/` for Vault initialisation.
 
 ## 🛠️ Development
 
@@ -82,20 +90,42 @@ pnpm --filter web dev
 
 The web app will be available at http://localhost:3000
 
-### Run API (FastAPI)
+### Run AI Service (FastAPI)
 ```bash
-pnpm dev:api
+pnpm dev:ai
 # or
-cd apps/api && uvicorn src.main:app --reload
+cd apps/ai && uvicorn src.main:app --reload
 ```
 
-The API will be available at:
+The AI service will be available at:
 - API: http://localhost:8000
-- Docs: http://localhost:8000/docs
+- Swagger docs: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
-### Run Both Simultaneously
+### Run Web App and AI Service Simultaneously
 ```bash
 pnpm dev:all
+```
+
+## 🏗️ Infrastructure Services
+
+The `docker-compose.yaml` provides all required backing services for local development:
+
+| Service | Purpose | Default Port |
+|---|---|---|
+| Redis | Event bus & caching | 6379 |
+| Neo4j | Graphiti memory graph | 7474 (browser), 7687 (Bolt) |
+| MongoDB | Sessions, transcripts & policy store | 27017 |
+| Vault | Secrets management | 8200 |
+| LiveKit | Real-time voice/media server | 7880 |
+| Redis Insight | Redis GUI (optional) | 8001 |
+
+```bash
+# Start all infrastructure services
+docker compose up -d
+
+# Start only specific services
+docker compose up -d redis neo4j mongodb
 ```
 
 ## 🧪 Testing & Linting
@@ -112,8 +142,8 @@ pnpm lint:fix       # Auto-fix issues
 # Build web app
 pnpm build
 
-# Build API (validation only)
-pnpm build:api
+# Build AI service (validation only)
+pnpm build:ai
 ```
 
 ## 🚢 Deployment
@@ -149,22 +179,18 @@ You must create a **`production` environment** in GitHub and add these secrets:
    - `RESEND_API_KEY`
    - `RESEND_FROM_EMAIL`
 
-**Why Environment Secrets?**
-- Better organization and access control
-- Separate secrets per environment (production, staging, etc.)
-- Required approvals before deployment (optional)
-- Audit trail of deployments
+See [`docs/GITHUB_ENVIRONMENTS.md`](docs/GITHUB_ENVIRONMENTS.md) for more details on environment secrets.
 
-### API (Manual or Custom)
+### AI Service (Manual or Custom)
 
-See `apps/api/README.md` for API deployment instructions.
+See [`apps/ai/README.md`](apps/ai/README.md) for AI service deployment instructions.
 
 ## 📝 Workflow Triggers
 
 - **Deploy Web**: Triggers only when `apps/web/**` files change
-- **Test API**: Triggers only when `apps/api/**` files change
+- **Test AI**: Triggers only when `apps/ai/**` files change
 - Changes to Python code **will not** trigger Vercel deployment
-- Changes to Nuxt code **will not** trigger API tests
+- Changes to Nuxt code **will not** trigger AI service tests
 
 All secrets are managed through the `production` environment in GitHub.
 
