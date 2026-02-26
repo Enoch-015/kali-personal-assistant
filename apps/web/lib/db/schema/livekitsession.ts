@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
 
@@ -7,7 +7,7 @@ import { user } from "./auth";
  * LiveKit sessions track voice/video sessions with metadata
  * like transcript URLs, ephemeral key references, and status.
  */
-export const livekitSession = sqliteTable("livekit_session", {
+export const livekitSession = pgTable("livekit_session", {
   id: text("id").primaryKey(),
 
   // Room information
@@ -34,18 +34,20 @@ export const livekitSession = sqliteTable("livekit_session", {
   recordingUrl: text("recording_url"),
 
   // Session metadata (JSON)
-  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+  metadata: jsonb("metadata")
+    .$type<Record<string, unknown>>()
+    .default(sql`'{}'::jsonb`),
 
   // Timing
-  startedAt: integer("started_at", { mode: "timestamp_ms" }),
-  endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+  endedAt: timestamp("ended_at", { withTimezone: true, mode: "date" }),
 
   // Timestamps
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
     .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });

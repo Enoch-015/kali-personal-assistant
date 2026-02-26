@@ -32,9 +32,9 @@ export default defineEventHandler(async (event) => {
         url: config.url,
         name: config.name,
         description: config.description,
-        isActive: config.isActive === 1,
-        createdAt: new Date(config.createdAt).toISOString(),
-        updatedAt: new Date(config.updatedAt).toISOString(),
+        isActive: config.isActive,
+        createdAt: config.createdAt.toISOString(),
+        updatedAt: config.updatedAt.toISOString(),
       })),
     };
   }

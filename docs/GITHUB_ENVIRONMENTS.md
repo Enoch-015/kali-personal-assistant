@@ -42,11 +42,8 @@ Value: [Get from Vercel Project Settings → General]
 
 #### Database Configuration
 ```
-Name: TURSO_DATABASE_URL
-Value: [Your Turso database URL]
-
-Name: TURSO_AUTH_TOKEN
-Value: [Your Turso auth token]
+Name: NEON_DATABASE_URL
+Value: [Your Neon PostgreSQL connection string]
 ```
 
 #### Authentication

@@ -8,7 +8,7 @@ import { env } from "./env";
 const baseUrl = env.BETTER_AUTH_BASE_URL;
 
 export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "sqlite" }),
+  database: drizzleAdapter(db, { provider: "pg" }),
   baseURL: baseUrl, // Add this - tells Better Auth your base URL
   emailAndPassword: {
     enabled: true,

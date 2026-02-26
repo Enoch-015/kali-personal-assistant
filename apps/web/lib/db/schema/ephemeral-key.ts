@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
 
@@ -13,7 +13,7 @@ import { user } from "./auth";
  * - WebSocket connection tokens
  * - Cross-service communication
  */
-export const ephemeralKey = sqliteTable("ephemeral_key", {
+export const ephemeralKey = pgTable("ephemeral_key", {
   id: text("id").primaryKey(),
 
   // The actual key value (hashed for security)
@@ -26,33 +26,37 @@ export const ephemeralKey = sqliteTable("ephemeral_key", {
   name: text("name"),
 
   // Scopes/permissions (JSON array of allowed actions)
-  scopes: text("scopes", { mode: "json" }).$type<string[]>().default([]),
+  scopes: jsonb("scopes")
+    .$type<string[]>()
+    .default(sql`'[]'::jsonb`),
 
   // Associated user (optional - keys can be system-level)
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
 
   // Expiration
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
 
   // Usage tracking
-  lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: "date" }),
   usageCount: integer("usage_count").notNull().default(0),
 
   // Optional max usage limit (null = unlimited)
   maxUsage: integer("max_usage"),
 
   // Revocation
-  revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
 
   // Metadata (JSON for additional context)
-  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+  metadata: jsonb("metadata")
+    .$type<Record<string, unknown>>()
+    .default(sql`'{}'::jsonb`),
 
   // Timestamps
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
     .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+    .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
 });

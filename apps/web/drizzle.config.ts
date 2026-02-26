@@ -1,13 +1,18 @@
+import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
-import env from "./lib/env";
+// eslint-disable-next-line node/no-process-env
+const databaseUrl = process.env.NEON_DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error("NEON_DATABASE_URL is required to run Drizzle migrations");
+}
 
 export default defineConfig({
   schema: "./lib/db/schema/index.ts",
   out: "./lib/db/migrations",
-  dialect: "turso",
+  dialect: "postgresql",
   dbCredentials: {
-    url: env.TURSO_DATABASE_URL!,
-    authToken: env.NODE_ENV === "development" ? undefined : env.TURSO_AUTH_TOKEN!,
+    url: databaseUrl,
   },
 });

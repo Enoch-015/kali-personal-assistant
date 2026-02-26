@@ -1,11 +1,14 @@
-import { int, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { boolean, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 
-export const mcp = sqliteTable("mcp", {
-  id: int().primaryKey({ autoIncrement: true }),
-  url: text().notNull().unique(),
-  name: text().notNull(),
-  description: text().notNull(),
-  isActive: int().notNull().default(1),
-  createdAt: int().notNull().$default(() => Date.now()),
-  updatedAt: int().notNull().$default(() => Date.now()).$onUpdate(() => Date.now()),
+export const mcp = pgTable("mcp", {
+  id: serial("id").primaryKey(),
+  url: text("url").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true, mode: "date" })
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
 });

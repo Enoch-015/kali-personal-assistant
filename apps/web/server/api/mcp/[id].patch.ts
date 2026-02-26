@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
 
     // Build update object
     const updates: Record<string, unknown> = {
-      updatedAt: Date.now(),
+      updatedAt: new Date(),
     };
 
     if (url !== undefined)
@@ -74,7 +74,7 @@ export default defineEventHandler(async (event) => {
     if (description !== undefined)
       updates.description = description;
     if (isActive !== undefined)
-      updates.isActive = isActive ? 1 : 0;
+      updates.isActive = Boolean(isActive);
 
     await db
       .update(mcp)
@@ -95,9 +95,9 @@ export default defineEventHandler(async (event) => {
         url: updated.url,
         name: updated.name,
         description: updated.description,
-        isActive: updated.isActive === 1,
-        createdAt: new Date(updated.createdAt).toISOString(),
-        updatedAt: new Date(updated.updatedAt).toISOString(),
+        isActive: updated.isActive,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
       },
     };
   }

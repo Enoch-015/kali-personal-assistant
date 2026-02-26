@@ -43,27 +43,23 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const now = Date.now();
-
-    const result = await db.insert(mcp).values({
+    const [created] = await db.insert(mcp).values({
       url,
       name,
       description,
-      isActive: isActive ? 1 : 0,
-      createdAt: now,
-      updatedAt: now,
-    });
+      isActive: Boolean(isActive),
+    }).returning();
 
     return {
       success: true,
       mcp: {
-        id: result.lastInsertRowid,
-        url,
-        name,
-        description,
-        isActive,
-        createdAt: new Date(now).toISOString(),
-        updatedAt: new Date(now).toISOString(),
+        id: created.id,
+        url: created.url,
+        name: created.name,
+        description: created.description,
+        isActive: created.isActive,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
       },
     };
   }
