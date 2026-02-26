@@ -13,8 +13,7 @@ Use this checklist to ensure your monorepo is properly configured for deployment
   - Command: `git diff --quiet HEAD^ HEAD -- apps/web/`
   
 - [ ] Add **Environment Variables** in Vercel
-  - [ ] `TURSO_DATABASE_URL`
-  - [ ] `TURSO_AUTH_TOKEN`
+  - [ ] `NEON_DATABASE_URL`
   - [ ] `BETTER_AUTH_SECRET`
   - [ ] `BETTER_AUTH_BASE_URL`
   - [ ] `RESEND_API_KEY`
@@ -32,8 +31,7 @@ Use this checklist to ensure your monorepo is properly configured for deployment
 - [ ] `VERCEL_TOKEN` - From https://vercel.com/account/tokens
 - [ ] `VERCEL_ORG_ID` - From Vercel project settings
 - [ ] `VERCEL_PROJECT_ID` - From Vercel project settings
-- [ ] `TURSO_DATABASE_URL`
-- [ ] `TURSO_AUTH_TOKEN`
+- [ ] `NEON_DATABASE_URL`
 - [ ] `BETTER_AUTH_SECRET`
 - [ ] `BETTER_AUTH_BASE_URL`
 - [ ] `RESEND_API_KEY`

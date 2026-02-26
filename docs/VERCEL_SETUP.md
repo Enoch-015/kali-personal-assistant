@@ -24,8 +24,7 @@ Since your entire repo is already connected to Vercel, you MUST update the Verce
 ### Step 3: Add Environment Variables
 1. Go to **Settings** → **Environment Variables**
 2. Add these variables for **Production**, **Preview**, and **Development**:
-   - `TURSO_DATABASE_URL`
-   - `TURSO_AUTH_TOKEN`
+   - `NEON_DATABASE_URL`
    - `BETTER_AUTH_SECRET`
    - `BETTER_AUTH_BASE_URL`
    - `RESEND_API_KEY`
@@ -69,8 +68,7 @@ If you want GitHub Actions to fully control deployments:
    - `VERCEL_TOKEN` - Get from https://vercel.com/account/tokens
    - `VERCEL_ORG_ID` - Get from Vercel project settings → General
    - `VERCEL_PROJECT_ID` - Get from Vercel project settings → General
-   - `TURSO_DATABASE_URL`
-   - `TURSO_AUTH_TOKEN`
+   - `NEON_DATABASE_URL`
    - `BETTER_AUTH_SECRET`
    - `BETTER_AUTH_BASE_URL`
    - `RESEND_API_KEY`

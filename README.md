@@ -172,8 +172,7 @@ You must create a **`production` environment** in GitHub and add these secrets:
    - `VERCEL_TOKEN`
    - `VERCEL_ORG_ID`
    - `VERCEL_PROJECT_ID`
-   - `TURSO_DATABASE_URL`
-   - `TURSO_AUTH_TOKEN`
+   - `NEON_DATABASE_URL`
    - `BETTER_AUTH_SECRET`
    - `BETTER_AUTH_BASE_URL`
    - `RESEND_API_KEY`

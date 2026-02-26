@@ -18,7 +18,7 @@ Your monorepo now has a proper TypeScript setup:
 ## 🚨 Fix TypeScript Errors in VS Code
 
 If you're seeing errors like:
-- `Cannot find module 'drizzle-orm/libsql'`
+- `Cannot find module 'drizzle-orm/neon-http'`
 - `Cannot find module './lib/env'`
 - `Cannot read file '/workspaces/kali-personal-assistant/tsconfig.json'`
 

@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
-    "dev": "concurrently \"pnpm dev:db\" \"nuxt dev --host\"",
-    "dev:db": "turso dev --db-file local.db",
+    "dev": "nuxt dev --host",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -14,7 +13,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@libsql/client": "^0.15.15",
+    "@neondatabase/serverless": "^1.0.1",
     "@nuxt/eslint": "1.9.0",
     "@nuxt/icon": "2.0.0",
     "@nuxt/image": "^1.11.0",
@@ -24,7 +23,6 @@
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "concurrently": "^9.2.1",
     "drizzle-orm": "^0.44.5",
     "eslint": "^9.35.0",
     "livekit-client": "2.11.0",
